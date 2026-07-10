@@ -559,6 +559,51 @@
   .story-caption[hidden]{ display:none; }
 
   /* ============================================================ */
+  /* レスポンシブ対応（タブレット・スマホ）                          */
+  /* 画面表示のみに影響。@media print の出力仕様は変更しない。       */
+  /* ============================================================ */
+  @media screen and (max-width: 900px){
+    .app-layout{
+      flex-direction: column;
+    }
+    .control-panel{
+      width: 100%;
+      flex: none;
+      max-height: none;
+      border-right: none;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+    .preview-panel{
+      max-height: none;
+      padding: 20px 12px;
+    }
+    .paper{
+      width: 100%;
+      max-width: 210mm;
+      min-height: 0;
+      aspect-ratio: 210 / 297;
+    }
+    .grip-guide,
+    .trace-hint,
+    .story-caption{
+      max-width: 100%;
+    }
+    .grip-steps-flow{
+      flex-direction: column;
+    }
+    .grip-step-arrow{
+      transform: rotate(90deg);
+    }
+  }
+
+  @media screen and (max-width: 480px){
+    :root{ font-size: 15px; }
+    .control-panel{ padding: 14px; }
+    .theme-grid{ grid-template-columns: repeat(2, 1fr); }
+    .hand-illustration{ width: 130px; height: 150px; }
+  }
+
+  /* ============================================================ */
   /* PRINT RULES — must guarantee pixel-perfect A4 output          */
   /* ============================================================ */
   @page{
