@@ -1,0 +1,1426 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>うんぴつメーカー | 微細運動・運筆支援ツール</title>
+
+<!-- ============================================================ -->
+<!-- STYLE: CSS                                                    -->
+<!-- デジタル庁デザインシステム（DADS）のカラートークン・アクセシビリティ  -->
+<!-- 基準（コントラスト比・フォーカスリング・タップ領域）を踏まえつつ、  -->
+<!-- 子どもでも直感的に触れるよう大きめのUIパーツで構成しています。     -->
+<!-- ============================================================ -->
+<style>
+  :root{
+    /* --- DADS 準拠カラートークン --- */
+    --color-bg: #F8F8FB;          /* Background / Standard */
+    --color-panel: #ffffff;
+    --color-border: #CCCCCC;      /* SolidGray 200 */
+    --color-border-soft: #E3E3E6;
+    --color-text: #1A1A1A;        /* SolidGray 900 */
+    --color-text-soft: #767676;   /* SolidGray 536（AA基準クリアの目安色） */
+    --color-primary: #0017C1;     /* Blue 900 / Link */
+    --color-primary-strong: #000E86;
+    --color-primary-soft: #E8F1FE;/* Blue 50 */
+    --color-accent: #FB5B01;      /* Orange 600 */
+    --color-accent-soft: #FFEEE2; /* Orange 50 */
+    --color-accent-text: #7A2E00;
+    --color-mint: #E6F5EC;        /* Green 50 */
+    --color-mint-text: #115A36;   /* Green 900 */
+    --color-start: #259D63;       /* Green 600（Success系） */
+    --color-end: #E5342E;         /* Red系（やや彩度を落とし目に調整） */
+    --color-road: #C5D7FB;        /* Blue 200：ガイド帯 */
+    --color-center-line: #3460FB; /* Blue 600：中心線 */
+    --focus-ring: #0017C1;
+    --radius-lg: 12px;
+    --radius-md: 8px;
+    --tap-min: 48px;              /* 子ども・現場スタッフ向け最小タップ領域 */
+    font-size: 17px;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    margin:0;
+    padding:0;
+    height:100%;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "Meiryo", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.6;
+  }
+
+  h1, h2, h3{ margin: 0 0 8px 0; }
+
+  /* すべてのインタラクティブ要素に明確なフォーカスリングを付与（アクセシビリティ基準） */
+  a:focus-visible, button:focus-visible, input:focus-visible, label:focus-within{
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* ---------------- Layout: 2 column ---------------- */
+  .app-layout{
+    display:flex;
+    width:100%;
+    min-height:100vh;
+    align-items: stretch;
+  }
+
+  /* ---------------- Left: Control panel ---------------- */
+  .control-panel{
+    width: 380px;
+    flex: 0 0 380px;
+    background: var(--color-panel);
+    border-right: 1px solid var(--color-border-soft);
+    padding: 20px;
+    overflow-y: auto;
+    max-height: 100vh;
+  }
+
+  .app-title{
+    font-size: 1.4rem;
+    color: var(--color-primary);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .app-title .emoji{ font-size:1.6rem; }
+  .app-subtitle{
+    font-size: 0.85rem;
+    color: var(--color-text-soft);
+    margin-bottom: 20px;
+  }
+
+  .panel-section{
+    background: #fff;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .panel-section h2{
+    font-size: 1.05rem;
+    color: var(--color-primary);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .panel-section h2 .badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:26px; height:26px;
+    border-radius:50%;
+    background: var(--color-primary);
+    color:#fff;
+    font-size:0.8rem;
+    flex-shrink:0;
+  }
+
+  /* Buttons（タップ領域を広く確保） */
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    width:100%;
+    min-height: var(--tap-min);
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    border: 2px solid transparent;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.08s ease, filter 0.15s ease;
+    font-family: inherit;
+  }
+  .btn:active{ transform: scale(0.97); }
+  .btn-guide{
+    background: var(--color-accent-soft);
+    color: var(--color-accent-text);
+    border-color: #FFD7B8;
+  }
+  .btn-guide.active{ background: var(--color-accent); color:#fff; }
+  .btn-print{
+    background: var(--color-primary);
+    color: #fff;
+    font-size: 1.1rem;
+    min-height: 56px;
+  }
+  .btn-print:hover{ background: var(--color-primary-strong); }
+  .btn-clear{
+    background: #fff;
+    color: var(--color-text-soft);
+    border-color: var(--color-border);
+  }
+  .btn-clear:hover{ background: var(--color-bg); }
+
+  /* Accordion (pre-approach activities) */
+  .accordion-toggle{
+    width:100%;
+    min-height: var(--tap-min);
+    text-align:left;
+    background: var(--color-mint);
+    color: var(--color-mint-text);
+    border: 2px solid transparent;
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+    font-size:0.95rem;
+    font-weight:700;
+    cursor:pointer;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-family: inherit;
+  }
+  .accordion-toggle .chevron{
+    transition: transform 0.2s ease;
+    display:inline-block;
+  }
+  .accordion-toggle[aria-expanded="true"] .chevron{
+    transform: rotate(180deg);
+  }
+  .accordion-panel{
+    overflow:hidden;
+    max-height:0;
+    transition: max-height 0.25s ease;
+  }
+  .accordion-panel.open{
+    max-height: 3000px;
+  }
+
+  /* 指先遊びカード（1つずつクリックで詳細が開く） */
+  .activity-list{
+    list-style:none;
+    margin:10px 0 0 0;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .activity-card{
+    background:#fff;
+    border:2px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    overflow:hidden;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .activity-card:has(.activity-header[aria-expanded="true"]){
+    border-color: var(--color-primary);
+    box-shadow: 0 2px 8px rgba(0,23,193,0.12);
+  }
+  .activity-header{
+    width:100%;
+    min-height: var(--tap-min);
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 12px;
+    background:#fff;
+    border:none;
+    cursor:pointer;
+    text-align:left;
+    font-family: inherit;
+  }
+  .activity-icon{
+    font-size:1.8rem;
+    line-height:1;
+    flex-shrink:0;
+  }
+  .activity-title-group{
+    flex:1;
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+  }
+  .activity-title{
+    font-size:0.92rem;
+    font-weight:700;
+    color: var(--color-text);
+  }
+  .activity-summary{
+    font-size:0.78rem;
+    color: var(--color-text-soft);
+  }
+  .activity-level{
+    font-size:0.85rem;
+    color: var(--color-accent);
+    letter-spacing:1px;
+    flex-shrink:0;
+  }
+  .activity-header .chevron{
+    flex-shrink:0;
+    font-size:0.8rem;
+    color: var(--color-text-soft);
+    transition: transform 0.2s ease;
+  }
+  .activity-header[aria-expanded="true"] .chevron{
+    transform: rotate(180deg);
+  }
+  .activity-detail{
+    overflow:hidden;
+    max-height:0;
+    transition: max-height 0.25s ease;
+    background: var(--color-mint);
+  }
+  .activity-detail.open{
+    max-height: 260px;
+  }
+  .activity-detail-inner{
+    padding:4px 14px 14px 52px;
+    font-size:0.85rem;
+    line-height:1.6;
+    color: var(--color-text);
+  }
+  .activity-meta{
+    margin-top:6px;
+    font-size:0.82rem;
+  }
+  .activity-meta strong{
+    color: var(--color-mint-text);
+  }
+
+  /* Radio group（アイコン＋文字で、読字前の子どもにも分かる見た目に） */
+  .field-label{
+    font-size:0.9rem;
+    font-weight:700;
+    color: var(--color-text-soft);
+    margin: 16px 0 8px 0;
+  }
+  .radio-grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:10px;
+  }
+  .radio-option{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+    min-height: 76px;
+    background:#fff;
+    border:2px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding:10px 8px;
+    cursor:pointer;
+    font-size:0.85rem;
+    font-weight:600;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .radio-option .radio-icon{
+    font-size:1.5rem;
+    line-height:1;
+  }
+  .radio-option:has(input:checked){
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
+  }
+  .radio-option input{
+    accent-color: var(--color-primary);
+    width:20px; height:20px;
+  }
+
+  /* テーマ選択（コンパクトなカードを3列で並べる） */
+  .theme-grid{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap:8px;
+  }
+  .radio-option.compact{
+    min-height:60px;
+    padding:6px 4px;
+    font-size:0.68rem;
+    gap:2px;
+  }
+  .radio-option.compact .radio-icon{
+    font-size:1.3rem;
+  }
+  .radio-option.compact input{
+    width:16px; height:16px;
+  }
+
+  /* Range slider */
+  .range-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  input[type="range"]{
+    flex:1;
+    accent-color: var(--color-primary);
+    height: 28px;
+  }
+  .range-value{
+    font-size:0.85rem;
+    color: var(--color-primary);
+    font-weight:700;
+    min-width: 46px;
+    text-align:right;
+  }
+  .range-hint{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    font-size:0.78rem;
+    color: var(--color-text-soft);
+    margin-top:6px;
+    font-weight:600;
+  }
+  .range-hint span{ display:flex; align-items:center; gap:6px; }
+  .size-dot{
+    display:inline-block;
+    border-radius:50%;
+    background: var(--color-text-soft);
+    flex-shrink:0;
+  }
+  .size-dot.small{ width:7px; height:7px; }
+  .size-dot.large{ width:16px; height:16px; }
+
+  /* Toggle switch (start/end icons)（タップしやすい大きめサイズ） */
+  .toggle-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    margin-top:14px;
+  }
+  .switch{
+    position:relative;
+    width:52px;
+    height:30px;
+    flex-shrink:0;
+  }
+  .switch input{
+    opacity:0;
+    width:0;
+    height:0;
+  }
+  .switch-track{
+    position:absolute;
+    inset:0;
+    background:#CCCCCC;
+    border-radius:999px;
+    cursor:pointer;
+    transition: background 0.2s ease;
+  }
+  .switch-track::before{
+    content:"";
+    position:absolute;
+    width:22px; height:22px;
+    left:4px; top:4px;
+    background:#fff;
+    border-radius:50%;
+    transition: transform 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .switch input:checked + .switch-track{ background: var(--color-primary); }
+  .switch input:checked + .switch-track::before{ transform: translateX(22px); }
+  .switch input:focus-visible + .switch-track{
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  /* ---------------- Right: Preview / print area ---------------- */
+  .preview-panel{
+    flex: 1 1 auto;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding: 32px 20px;
+    overflow-y:auto;
+    max-height:100vh;
+  }
+
+  /* Grip guide illustration overlay (screen only) */
+  .grip-guide{
+    display:none;
+    width: 100%;
+    max-width: 210mm;
+    background:#fff;
+    border:1px solid var(--color-border-soft);
+    border-radius: var(--radius-lg);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 14px rgba(30,50,80,0.08);
+  }
+  .grip-guide.visible{ display:block; }
+  .grip-guide h3{ color: var(--color-primary); }
+
+  /* STEP1→STEP2 のイラストフロー */
+  .grip-steps-flow{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:20px;
+    flex-wrap:wrap;
+    margin-bottom:18px;
+  }
+  .grip-step{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+  }
+  .grip-step-arrow{
+    font-size:1.8rem;
+    color: var(--color-border);
+    flex-shrink:0;
+  }
+  .hand-illustration{
+    width:170px;
+    height:190px;
+    flex-shrink:0;
+  }
+  .hand-illustration svg{ width:100%; height:100%; display:block; }
+  .grip-step-badge{
+    display:inline-block;
+    background: var(--color-primary);
+    color:#fff;
+    font-size:0.7rem;
+    font-weight:700;
+    padding:2px 10px;
+    border-radius:999px;
+    letter-spacing:0.5px;
+  }
+  .grip-step-caption{
+    font-size:0.85rem;
+    font-weight:700;
+    color: var(--color-text);
+    text-align:center;
+    margin:0;
+  }
+
+  .grip-instructions{
+    font-size:0.9rem;
+    line-height:1.7;
+    color: var(--color-text);
+    margin: 0 0 14px 0;
+    padding-left:22px;
+  }
+  .grip-instructions strong{ color: var(--color-primary); }
+
+  .grip-note{
+    background: var(--color-mint);
+    color: var(--color-mint-text);
+    border-radius: var(--radius-md);
+    padding:12px 16px;
+    font-size:0.85rem;
+    line-height:1.6;
+    margin:0;
+  }
+
+  /* Screen background wrapper for the "paper" */
+  .paper-stage{
+    background: var(--color-bg);
+    width:100%;
+    display:flex;
+    justify-content:center;
+  }
+
+  .paper{
+    width: 210mm;
+    min-height: 297mm;
+    background:#ffffff;
+    box-shadow: 0 6px 24px rgba(30,50,80,0.18), 0 1px 4px rgba(30,50,80,0.12);
+    box-sizing:border-box;
+  }
+  .paper svg{
+    display:block;
+    width:100%;
+    height:100%;
+    touch-action: none;
+    cursor: crosshair;
+  }
+
+  .trace-hint{
+    font-size:0.95rem;
+    font-weight:700;
+    color: var(--color-primary);
+    background: var(--color-primary-soft);
+    border-radius: var(--radius-md);
+    padding:8px 16px;
+    margin: 0 0 14px 0;
+  }
+  .story-caption{
+    font-size:0.9rem;
+    font-weight:600;
+    color: var(--color-accent-text);
+    background: var(--color-accent-soft);
+    border-radius: var(--radius-md);
+    padding:8px 16px;
+    margin: -6px 0 14px 0;
+    max-width: 210mm;
+    width:100%;
+  }
+  .story-caption[hidden]{ display:none; }
+
+  /* ============================================================ */
+  /* PRINT RULES — must guarantee pixel-perfect A4 output          */
+  /* ============================================================ */
+  @page{
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  @media print{
+    html, body{
+      background: #fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .no-print{
+      display: none !important;
+    }
+    .app-layout{
+      display:block;
+    }
+    .preview-panel{
+      padding:0;
+      overflow:visible;
+      max-height:none;
+      display:block;
+    }
+    .paper-stage{
+      background:none;
+      width:auto;
+      display:block;
+    }
+    .paper{
+      width: 210mm;
+      min-height: 297mm;
+      box-shadow:none;
+      margin:0;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    svg, path, circle, text, rect{
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    #traceLayer{
+      display:none;
+    }
+    #celebrationLayer{
+      display:none;
+    }
+  }
+
+  /* ゴール到達演出（はなまる＋キャラクター） */
+  .goal-character{
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: goalPop 0.5s ease-out;
+  }
+  @keyframes goalPop{
+    0%{ transform: scale(0); opacity:0; }
+    60%{ transform: scale(1.35); opacity:1; }
+    100%{ transform: scale(1); }
+  }
+  .traveler-icon{
+    transition: opacity 0.25s ease;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- HTML: 構造                                                    -->
+<!-- ============================================================ -->
+<div class="app-layout">
+
+  <!-- ============================ 左パネル：コントロールパネル ============================ -->
+  <aside class="control-panel no-print">
+    <h1 class="app-title"><span class="emoji">✏️</span>うんぴつメーカー</h1>
+    <p class="app-subtitle">微細運動・運筆支援ツール（Unpitsu-Maker）</p>
+
+    <!-- A. 微細運動・持ち方支援セクション -->
+    <section class="panel-section">
+      <h2><span class="badge">A</span>持ち方支援</h2>
+
+      <button type="button" id="btnGripGuide" class="btn btn-guide">
+        ✋ 持ち方ガイドを見る
+      </button>
+
+      <div class="field-label" style="margin-top:16px;">事前アプローチ確認</div>
+      <button type="button" class="accordion-toggle" id="accordionToggle" aria-expanded="false" aria-controls="accordionPanel">
+        指先遊びリストを開く
+        <span class="chevron">▼</span>
+      </button>
+      <div class="accordion-panel" id="accordionPanel">
+        <ul class="activity-list" id="activityList"></ul>
+      </div>
+    </section>
+
+    <!-- B. 運筆プリント生成セクション -->
+    <section class="panel-section">
+      <h2><span class="badge">B</span>運筆プリント設定</h2>
+
+      <div class="field-label" id="themeLabel">テーマをえらぼう</div>
+      <div class="theme-grid" id="themeGroup" role="radiogroup" aria-labelledby="themeLabel"></div>
+
+      <div class="field-label" id="lineTypeLabel">線の種類</div>
+      <div class="radio-grid" id="lineTypeGroup" role="radiogroup" aria-labelledby="lineTypeLabel">
+        <label class="radio-option">
+          <input type="radio" name="lineType" value="straight" checked>
+          <span class="radio-icon" aria-hidden="true">➖</span>
+          直線
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="lineType" value="wave">
+          <span class="radio-icon" aria-hidden="true">〰️</span>
+          波線
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="lineType" value="zigzag">
+          <span class="radio-icon" aria-hidden="true">⚡</span>
+          ジグザグ
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="lineType" value="spiral">
+          <span class="radio-icon" aria-hidden="true">🌀</span>
+          らせん
+        </label>
+      </div>
+
+      <label class="field-label" for="thicknessRange">難易度（線の太さ）</label>
+      <div class="range-row">
+        <input type="range" id="thicknessRange" min="3" max="16" step="1" value="9">
+        <span class="range-value" id="thicknessValue">9mm</span>
+      </div>
+      <div class="range-hint">
+        <span><span class="size-dot small" aria-hidden="true"></span>細い（むずかしい）</span>
+        <span>太い（やさしい）<span class="size-dot large" aria-hidden="true"></span></span>
+      </div>
+
+      <div class="toggle-row">
+        <span class="field-label" style="margin:0;" id="endpointLabel">始点・終点アイコン 🟢🔴</span>
+        <label class="switch">
+          <input type="checkbox" id="endpointToggle" checked aria-labelledby="endpointLabel">
+          <span class="switch-track"></span>
+        </label>
+      </div>
+    </section>
+
+    <!-- C. アクション -->
+    <section class="panel-section">
+      <h2><span class="badge">C</span>印刷・なぞり書き</h2>
+      <button type="button" class="btn btn-print" id="btnPrint">🖨️ このプリントを印刷する</button>
+      <button type="button" class="btn btn-clear" id="btnClearTrace" style="margin-top:10px;">🧹 なぞり書きをけす</button>
+    </section>
+  </aside>
+
+  <!-- ============================ 右パネル：プレビュー＆印刷領域 ============================ -->
+  <main class="preview-panel">
+
+    <!-- 持ち方ガイド（画面表示のみ／印刷対象外） -->
+    <div class="grip-guide no-print" id="gripGuide">
+      <h3>✋ 持ち方ガイド：バキューンえんぴつ持ち</h3>
+
+      <div class="grip-steps-flow">
+        <div class="grip-step">
+          <div class="hand-illustration" aria-hidden="true">
+            <svg viewBox="0 0 200 220" xmlns="http://www.w3.org/2000/svg">
+              <!-- 親指：手のひらの下に重ねて描き、自然な付け根にする -->
+              <rect x="15" y="142" width="76" height="26" rx="13" ry="13"
+                    fill="#FFDAB3" stroke="#D99A5B" stroke-width="4"
+                    transform="rotate(20 91 155)"/>
+              <!-- 手のひら・握りこぶし本体 -->
+              <rect x="60" y="108" width="92" height="94" rx="34" ry="34"
+                    fill="#FFDAB3" stroke="#D99A5B" stroke-width="4"/>
+              <!-- 人差し指：まっすぐ上に伸ばす -->
+              <rect x="112" y="14" width="28" height="104" rx="14" ry="14"
+                    fill="#FFDAB3" stroke="#D99A5B" stroke-width="4"/>
+              <!-- 曲げた中指・薬指・小指の関節ライン -->
+              <path d="M70 120 Q80 132 90 120" fill="none" stroke="#D99A5B" stroke-width="3" stroke-linecap="round"/>
+              <path d="M90 116 Q103 130 116 116" fill="none" stroke="#D99A5B" stroke-width="3" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <span class="grip-step-badge">STEP 1</span>
+          <p class="grip-step-caption">バキューンの手を<br>つくる</p>
+        </div>
+
+        <div class="grip-step-arrow" aria-hidden="true">➜</div>
+
+        <div class="grip-step">
+          <div class="hand-illustration" aria-hidden="true">
+            <svg viewBox="0 0 230 220" xmlns="http://www.w3.org/2000/svg">
+              <!-- 人差し指：まっすぐ上に伸ばす（えんぴつの下敷きになる） -->
+              <rect x="112" y="14" width="28" height="104" rx="14" ry="14"
+                    fill="#FFDAB3" stroke="#D99A5B" stroke-width="4"/>
+              <!-- 手のひら・握りこぶし本体 -->
+              <rect x="60" y="108" width="92" height="94" rx="34" ry="34"
+                    fill="#FFDAB3" stroke="#D99A5B" stroke-width="4"/>
+              <!-- 曲げた中指・薬指・小指の関節ライン -->
+              <path d="M70 120 Q80 132 90 120" fill="none" stroke="#D99A5B" stroke-width="3" stroke-linecap="round"/>
+              <path d="M90 116 Q103 130 116 116" fill="none" stroke="#D99A5B" stroke-width="3" stroke-linecap="round"/>
+
+              <!-- えんぴつ：人差し指の第二関節あたりに斜めにのせる -->
+              <g transform="rotate(-67.8 95 140)">
+                <rect x="95" y="132" width="130" height="16" rx="8" fill="#FFD54A" stroke="#C9971F" stroke-width="3"/>
+                <rect x="95" y="132" width="16" height="16" rx="8" fill="#F48FB1" stroke="#C9971F" stroke-width="3"/>
+                <rect x="111" y="132" width="7" height="16" fill="#D8D8D8" stroke="#A6A6A6" stroke-width="1"/>
+                <polygon points="205,132 205,148 225,140" fill="#EAC08E" stroke="#C9971F" stroke-width="2" stroke-linejoin="round"/>
+                <polygon points="219,136 219,144 225,140" fill="#4A4A4A"/>
+              </g>
+
+              <!-- 親指：えんぴつの上から押さえる -->
+              <rect x="15" y="142" width="76" height="26" rx="13" ry="13"
+                    fill="#FFDAB3" stroke="#D99A5B" stroke-width="4"
+                    transform="rotate(20 91 155)"/>
+
+              <!-- 「第二関節」の位置を示すコールアウト -->
+              <circle cx="126" cy="64" r="10" fill="none" stroke="#0017C1" stroke-width="2" stroke-dasharray="3,3"/>
+              <path d="M134 58 L148 48" stroke="#0017C1" stroke-width="2" stroke-linecap="round"/>
+              <text x="150" y="46" font-size="14" font-weight="bold" fill="#0017C1" font-family="sans-serif">第二関節</text>
+            </svg>
+          </div>
+          <span class="grip-step-badge">STEP 2</span>
+          <p class="grip-step-caption">えんぴつをのせて<br>親指でおさえる</p>
+        </div>
+      </div>
+
+      <ol class="grip-instructions">
+        <li>親指と人差し指をピンと伸ばして「バキューン」の形を作ります。中指・薬指・小指は軽く握ります。</li>
+        <li>人差し指の<strong>第二関節</strong>あたりに、えんぴつ（またはスプーン）をのせます。</li>
+        <li>親指をえんぴつに添えて、軽くはさむように持ちます。</li>
+        <li>これで「えんぴつ持ち（三点持ち）」の完成です！</li>
+      </ol>
+
+      <p class="grip-note">🌱 すぐにできなくても大丈夫。「今日はできなくてもOK」というゆったりとした気持ちで、あせらず見守ってあげましょう。うまく持てないときは、無理をさせず別の道具に切り替えるのもおすすめです。</p>
+    </div>
+
+    <!-- なぞり書きヒント（画面表示のみ／印刷対象外） -->
+    <p class="trace-hint no-print">🖐️ ゆびや マウスで なぞって れんしゅうしてみよう！</p>
+    <p class="story-caption no-print" id="storyCaption" hidden></p>
+
+    <!-- A4 用紙プレビュー -->
+    <div class="paper-stage">
+      <div class="paper" id="paper">
+        <svg id="worksheetSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 297" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCRIPT: JavaScript ロジック                                   -->
+<!-- ============================================================ -->
+<script>
+(function () {
+  "use strict";
+
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const PAGE_W = 210;   // mm (A4)
+  const PAGE_H = 297;   // mm (A4)
+  const MARGIN_X = 18;  // mm
+  const HEADER_H = 26;  // mm reserved for title / name field
+  const FOOTER_MARGIN = 16; // mm bottom margin
+
+  const svg = document.getElementById("worksheetSvg");
+  const lineTypeInputs = document.querySelectorAll('input[name="lineType"]');
+  const thicknessRange = document.getElementById("thicknessRange");
+  const thicknessValue = document.getElementById("thicknessValue");
+  const endpointToggle = document.getElementById("endpointToggle");
+  let traceLayer = null; // なぞり書きの筆跡を入れるレイヤー（毎回の再描画で作り直す）
+  let celebrationLayer = null; // ゴール演出（はなまる・キャラクター）を入れるレイヤー
+  let goals = []; // 現在のワークシートのゴール地点一覧 { x, y, radius, character, cleared }
+  let travelerIcon = null; // なぞっている間、指について移動するキャラクターアイコン
+
+  // ---------------------------------------------------------------
+  // テーマ（キャラクター）選択：始点・終点アイコンとゴール演出を切り替える
+  // ---------------------------------------------------------------
+
+  const THEMES = [
+    {
+      id: "none", emoji: "⚪", label: "テーマなし",
+      story: "", start: null, waypoints: [], end: null, character: "⭐"
+    },
+    {
+      id: "errand", emoji: "🏃", label: "わすれもの届け",
+      story: "🏃 わすれものを届けに、お友だちの家までダッシュ！信号や噴水をよけて進もう。",
+      start: "🏃", waypoints: ["🚦", "⛲"], end: "🏠", character: "🏃"
+    },
+    {
+      id: "rocket", emoji: "🚀", label: "ロケット修理",
+      story: "🚀 星くずの道をすすんで、こわれたロケットのパーツを集めよう！",
+      start: "🚀", waypoints: ["🔩", "⭐"], end: "🪐", character: "🚀"
+    },
+    {
+      id: "seed", emoji: "🌱", label: "ふしぎな種さがし",
+      story: "🌱 ふしぎな種をもって森の奥へ。歩くたびに花がさくよ！",
+      start: "🌰", waypoints: ["🌷", "🍄"], end: "🌳", character: "🌱"
+    },
+    {
+      id: "seaescape", emoji: "🐚", label: "深海から宝島へ",
+      story: "🐚 暗い海で地図を見つけた。サンゴの迷路をぬけて、宝島を目指そう！",
+      start: "🗺️", waypoints: ["🪸", "✨"], end: "🏝️", character: "🐠"
+    },
+    {
+      id: "snacktrain", emoji: "🍰", label: "おやつ列車",
+      story: "🍰 チョコ駅から出発！クッキーのトンネルとわたあめの雲をこえて、ケーキの駅を目指そう。",
+      start: "🚂", waypoints: ["🍪", "☁️"], end: "🎂", character: "🚂"
+    }
+  ];
+
+  function renderThemes() {
+    const group = document.getElementById("themeGroup");
+    THEMES.forEach((theme, index) => {
+      const label = document.createElement("label");
+      label.className = "radio-option compact";
+      label.title = theme.story || theme.label;
+      label.innerHTML = `
+        <input type="radio" name="lineTheme" value="${theme.id}" ${index === 0 ? "checked" : ""}>
+        <span class="radio-icon" aria-hidden="true">${theme.emoji}</span>
+        ${theme.label}
+      `;
+      group.appendChild(label);
+    });
+  }
+
+  function getSelectedTheme() {
+    const value = document.querySelector('input[name="lineTheme"]:checked').value;
+    return THEMES.find((t) => t.id === value) || THEMES[0];
+  }
+
+  function updateStoryCaption(theme) {
+    const caption = document.getElementById("storyCaption");
+    if (theme.id === "none" || !theme.story) {
+      caption.hidden = true;
+      caption.textContent = "";
+    } else {
+      caption.hidden = false;
+      caption.textContent = theme.story;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // パス生成ロジック（直線・波線・ジグザグ・らせん）
+  // 各関数は { d, start:{x,y}, end:{x,y} } を返す
+  // ---------------------------------------------------------------
+
+  function genStraight(x1, x2, y) {
+    return {
+      d: `M ${x1} ${y} L ${x2} ${y}`,
+      start: { x: x1, y: y },
+      end: { x: x2, y: y }
+    };
+  }
+
+  function genWave(x1, x2, y, amplitude, waves) {
+    const width = x2 - x1;
+    const segLen = width / waves;
+    let d = `M ${x1} ${y}`;
+    for (let i = 0; i < waves; i++) {
+      const segStart = x1 + i * segLen;
+      const segEnd = segStart + segLen;
+      const cp1x = segStart + segLen * 0.25;
+      const cp2x = segStart + segLen * 0.75;
+      const dir = (i % 2 === 0) ? -1 : 1; // 上→下を交互に
+      const controlY = y + dir * amplitude;
+      d += ` C ${cp1x} ${controlY}, ${cp2x} ${controlY}, ${segEnd} ${y}`;
+    }
+    return { d, start: { x: x1, y: y }, end: { x: x2, y: y } };
+  }
+
+  function genZigzag(x1, x2, y, amplitude, segments) {
+    const width = x2 - x1;
+    const segLen = width / segments;
+    let d = `M ${x1} ${y}`;
+    for (let i = 0; i < segments; i++) {
+      const px = x1 + (i + 1) * segLen;
+      const py = (i % 2 === 0) ? y - amplitude : y + amplitude;
+      d += ` L ${px} ${py}`;
+    }
+    // 最後は基準線に戻す
+    d += ` L ${x2} ${y}`;
+    return { d, start: { x: x1, y: y }, end: { x: x2, y: y } };
+  }
+
+  function genSpiral(cx, cy, maxR, minR, turns) {
+    const steps = 160;
+    let d = "";
+    let start = null, end = null;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      // 外側（t=0）から内側（t=1）へ向かうスパイラル
+      const r = maxR - (maxR - minR) * t;
+      const theta = t * turns * 2 * Math.PI - Math.PI / 2;
+      const x = cx + r * Math.cos(theta);
+      const y = cy + r * Math.sin(theta);
+      if (i === 0) {
+        d += `M ${x.toFixed(2)} ${y.toFixed(2)} `;
+        start = { x, y };
+      } else {
+        d += `L ${x.toFixed(2)} ${y.toFixed(2)} `;
+      }
+      if (i === steps) end = { x, y };
+    }
+    return { d, start, end };
+  }
+
+  // ---------------------------------------------------------------
+  // 描画ヘルパー
+  // ---------------------------------------------------------------
+
+  function el(tag, attrs) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const key in attrs) node.setAttribute(key, attrs[key]);
+    return node;
+  }
+
+  function drawGuidePath(pathData, roadWidth) {
+    const group = el("g", {});
+    const road = el("path", {
+      d: pathData,
+      fill: "none",
+      stroke: "#C5D7FB",
+      "stroke-width": roadWidth,
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round"
+    });
+    const center = el("path", {
+      d: pathData,
+      fill: "none",
+      stroke: "#3460FB",
+      "stroke-width": 0.6,
+      "stroke-dasharray": "2.2,2.2",
+      "stroke-linecap": "round"
+    });
+    group.appendChild(road);
+    group.appendChild(center);
+    return { group, path: center };
+  }
+
+  function drawWaypointIcons(pathEl, icons, fontSize) {
+    const group = el("g", {});
+    if (!icons || !icons.length) return group;
+    const totalLength = pathEl.getTotalLength();
+    icons.forEach((icon, i) => {
+      const fraction = (i + 1) / (icons.length + 1);
+      const pt = pathEl.getPointAtLength(totalLength * fraction);
+      const text = el("text", {
+        x: pt.x, y: pt.y + fontSize * 0.35,
+        "font-size": fontSize, "text-anchor": "middle"
+      });
+      text.textContent = icon;
+      group.appendChild(text);
+    });
+    return group;
+  }
+
+  function drawEndpointMarkers(start, end, radius, theme) {
+    const group = el("g", {});
+    const startCircle = el("circle", {
+      cx: start.x, cy: start.y, r: radius,
+      fill: "#259D63", stroke: "#115A36", "stroke-width": 0.5
+    });
+    const endCircle = el("circle", {
+      cx: end.x, cy: end.y, r: radius,
+      fill: "#E5342E", stroke: "#8A1410", "stroke-width": 0.5
+    });
+    group.appendChild(startCircle);
+    group.appendChild(endCircle);
+
+    if (theme && theme.id !== "none") {
+      const iconSize = Math.max(7, radius * 2.4);
+      const startEmoji = el("text", {
+        x: start.x, y: start.y + iconSize * 0.35,
+        "font-size": iconSize, "text-anchor": "middle"
+      });
+      startEmoji.textContent = theme.start;
+      const endEmoji = el("text", {
+        x: end.x, y: end.y + iconSize * 0.35,
+        "font-size": iconSize, "text-anchor": "middle"
+      });
+      endEmoji.textContent = theme.end;
+      group.appendChild(startEmoji);
+      group.appendChild(endEmoji);
+    }
+    return group;
+  }
+
+  // ---------------------------------------------------------------
+  // ゴール演出：なぞって終点にたどり着いたら「はなまる」を描く
+  // ---------------------------------------------------------------
+
+  function genHanamaruPath(cx, cy, r) {
+    const steps = 60;
+    const turns = 1.85;
+    let d = "";
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const theta = t * turns * 2 * Math.PI - Math.PI / 2;
+      const wobble = Math.sin(t * Math.PI * 6) * r * 0.06;
+      const rr = r + wobble;
+      const x = cx + rr * Math.cos(theta);
+      const y = cy + rr * Math.sin(theta);
+      d += (i === 0 ? "M" : "L") + ` ${x.toFixed(2)} ${y.toFixed(2)} `;
+    }
+    return d;
+  }
+
+  function celebrateGoal(goal) {
+    goal.cleared = true;
+    const r = Math.max(9, goal.radius * 2.4);
+
+    const path = el("path", {
+      d: genHanamaruPath(goal.x, goal.y, r),
+      fill: "none",
+      stroke: "#FF4D4D",
+      "stroke-width": 1.8,
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round"
+    });
+    celebrationLayer.appendChild(path);
+    const len = path.getTotalLength();
+    path.style.strokeDasharray = String(len);
+    path.style.strokeDashoffset = String(len);
+    path.getBoundingClientRect(); // 強制リフローしてから再描画アニメーションを開始
+    path.style.transition = "stroke-dashoffset 0.7s ease-out";
+    requestAnimationFrame(() => { path.style.strokeDashoffset = "0"; });
+
+    const charText = el("text", {
+      x: goal.x + r * 0.9, y: goal.y - r * 0.9,
+      "font-size": Math.max(10, r * 0.95),
+      "text-anchor": "middle",
+      class: "goal-character"
+    });
+    charText.textContent = goal.character;
+    celebrationLayer.appendChild(charText);
+  }
+
+  function checkGoalProximity(p) {
+    goals.forEach((goal) => {
+      if (goal.cleared) return;
+      const dist = Math.hypot(p.x - goal.x, p.y - goal.y);
+      if (dist <= goal.radius * 3) celebrateGoal(goal);
+    });
+  }
+
+  function drawHeader() {
+    const group = el("g", {});
+    const title = el("text", {
+      x: MARGIN_X, y: 14, "font-size": 8, "font-weight": "bold",
+      fill: "#1A1A1A", "font-family": "sans-serif"
+    });
+    title.textContent = "うんぴつ れんしゅう";
+    group.appendChild(title);
+
+    const nameLabel = el("text", {
+      x: PAGE_W - MARGIN_X, y: 14, "font-size": 5,
+      fill: "#767676", "text-anchor": "end", "font-family": "sans-serif"
+    });
+    nameLabel.textContent = "なまえ：__________________";
+    group.appendChild(nameLabel);
+
+    const rule = el("line", {
+      x1: MARGIN_X, y1: 19, x2: PAGE_W - MARGIN_X, y2: 19,
+      stroke: "#CCCCCC", "stroke-width": 0.5
+    });
+    group.appendChild(rule);
+    return group;
+  }
+
+  // ---------------------------------------------------------------
+  // ワークシート全体の再描画
+  // ---------------------------------------------------------------
+
+  function buildWorksheet() {
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    goals = [];
+
+    svg.appendChild(drawHeader());
+
+    const lineType = document.querySelector('input[name="lineType"]:checked').value;
+    const theme = getSelectedTheme();
+    updateStoryCaption(theme);
+    const roadWidth = parseFloat(thicknessRange.value);
+    const showEndpoints = endpointToggle.checked;
+    const markerRadius = Math.max(2.2, roadWidth * 0.35);
+    const waypointSize = Math.max(6, markerRadius * 2.1);
+
+    const x1 = MARGIN_X;
+    const x2 = PAGE_W - MARGIN_X;
+    const areaTop = HEADER_H;
+    const areaBottom = PAGE_H - FOOTER_MARGIN;
+    const areaHeight = areaBottom - areaTop;
+
+    if (lineType === "spiral") {
+      // らせんは 2列 x 2行 のグリッドで配置
+      const cols = 2, rows = 2;
+      const cellW = (x2 - x1) / cols;
+      const cellH = areaHeight / rows;
+      const maxR = Math.min(cellW, cellH) / 2 - Math.max(6, roadWidth * 0.6);
+      const minR = Math.max(3, roadWidth * 0.5);
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const cx = x1 + cellW * (c + 0.5);
+          const cy = areaTop + cellH * (r + 0.5);
+          const { d, start, end } = genSpiral(cx, cy, maxR, minR, 2.5);
+          const { group: pathGroup, path: pathEl } = drawGuidePath(d, roadWidth);
+          svg.appendChild(pathGroup);
+          svg.appendChild(drawWaypointIcons(pathEl, theme.waypoints, waypointSize));
+          if (showEndpoints) svg.appendChild(drawEndpointMarkers(start, end, markerRadius, theme));
+          goals.push({ x: end.x, y: end.y, radius: markerRadius, character: theme.character, cleared: false });
+        }
+      }
+    } else {
+      // 直線・波線・ジグザグは複数行を敷き詰める
+      const rowGap = Math.max(20, roadWidth * 2.4);
+      const rowCount = Math.max(3, Math.min(8, Math.floor(areaHeight / rowGap)));
+      const actualGap = areaHeight / rowCount;
+      const amplitude = Math.max(6, actualGap * 0.3);
+
+      for (let i = 0; i < rowCount; i++) {
+        const y = areaTop + actualGap * (i + 0.5);
+        let result;
+        if (lineType === "wave") {
+          result = genWave(x1, x2, y, amplitude, 4);
+        } else if (lineType === "zigzag") {
+          result = genZigzag(x1, x2, y, amplitude, 8);
+        } else {
+          result = genStraight(x1, x2, y);
+        }
+        const { group: pathGroup, path: pathEl } = drawGuidePath(result.d, roadWidth);
+        svg.appendChild(pathGroup);
+        svg.appendChild(drawWaypointIcons(pathEl, theme.waypoints, waypointSize));
+        if (showEndpoints) svg.appendChild(drawEndpointMarkers(result.start, result.end, markerRadius, theme));
+        goals.push({ x: result.end.x, y: result.end.y, radius: markerRadius, character: theme.character, cleared: false });
+      }
+    }
+
+    // なぞり書き用レイヤー・ゴール演出レイヤー（パターン変更時に作り直される）
+    traceLayer = el("g", { id: "traceLayer" });
+    svg.appendChild(traceLayer);
+    celebrationLayer = el("g", { id: "celebrationLayer" });
+    svg.appendChild(celebrationLayer);
+
+    // なぞっている間、指について歩くキャラクターアイコン
+    travelerIcon = el("text", {
+      "font-size": Math.max(9, roadWidth * 1.1),
+      "text-anchor": "middle",
+      "pointer-events": "none",
+      opacity: "0",
+      class: "traveler-icon"
+    });
+    travelerIcon.textContent = theme.character;
+    svg.appendChild(travelerIcon);
+  }
+
+  // ---------------------------------------------------------------
+  // 事前アプローチ：指先遊びカードのデータと描画
+  // ---------------------------------------------------------------
+
+  const ACTIVITIES = [
+    {
+      icon: "🫘",
+      title: "豆つまみ",
+      summary: "お豆をつまんで移動させよう",
+      detail: "お箸やピンセット、指先で豆を掴んで容器に移す遊びです。つまむ力の調整を養います。",
+      aim: "三本指（親指・人差し指・中指）でつまむ動作の習得",
+      prep: "大豆や小豆、小皿2つ、お箸またはピンセット",
+      level: 1
+    },
+    {
+      icon: "🗜️",
+      title: "洗濯ばさみ遊び",
+      summary: "洗濯ばさみをぱっちんしてみよう",
+      detail: "洗濯ばさみを開閉して台紙やカゴのふちに挟む遊びです。親指と人差し指を向かい合わせる運動を促します。",
+      aim: "指を開いて閉じる力のコントロール",
+      prep: "洗濯ばさみ数個、台紙またはカゴ",
+      level: 1
+    },
+    {
+      icon: "📄",
+      title: "折り紙ちぎり",
+      summary: "紙をびりびりちぎってみよう",
+      detail: "紙を指先で細かくちぎって台紙に貼る遊びです。左右の手を別々に動かす協調運動を養います。",
+      aim: "両手の協調運動・力加減の調整",
+      prep: "折り紙や新聞紙、のり、台紙",
+      level: 2
+    },
+    {
+      icon: "🏷️",
+      title: "シール貼り",
+      summary: "シールをぺたぺた貼ってみよう",
+      detail: "小さなシールを台紙からはがして貼る遊びです。指先だけを使う分離運動を促します。",
+      aim: "指先だけを使う分離運動",
+      prep: "シール、台紙",
+      level: 1
+    },
+    {
+      icon: "💧",
+      title: "スポイトで色水遊び",
+      summary: "スポイトで色水をぎゅっと吸ってみよう",
+      detail: "スポイトを握って離す動作をくり返す遊びです。握る・離す力加減の調整を養います。",
+      aim: "握る・離す力加減のコントロール",
+      prep: "スポイト、色水、透明なカップ",
+      level: 2
+    },
+    {
+      icon: "📿",
+      title: "ひも通し",
+      summary: "ビーズにひもを通してみよう",
+      detail: "穴のあいたビーズや積み木にひもを通す遊びです。両手の協調と集中力を養います。",
+      aim: "両手の協調運動と集中力",
+      prep: "穴のあいたビーズやパーツ、ひも",
+      level: 3
+    }
+  ];
+
+  function renderActivities() {
+    const list = document.getElementById("activityList");
+    ACTIVITIES.forEach((activity, index) => {
+      const detailId = `activityDetail${index}`;
+      const li = document.createElement("li");
+      li.className = "activity-card";
+      li.innerHTML = `
+        <button type="button" class="activity-header" aria-expanded="false" aria-controls="${detailId}">
+          <span class="activity-icon" aria-hidden="true">${activity.icon}</span>
+          <span class="activity-title-group">
+            <span class="activity-title">${activity.title}</span>
+            <span class="activity-summary">${activity.summary}</span>
+          </span>
+          <span class="activity-level" aria-hidden="true">${"★".repeat(activity.level)}${"☆".repeat(3 - activity.level)}</span>
+          <span class="chevron">▼</span>
+        </button>
+        <div class="activity-detail" id="${detailId}">
+          <div class="activity-detail-inner">
+            <p>${activity.detail}</p>
+            <p class="activity-meta"><strong>ねらい：</strong>${activity.aim}</p>
+            <p class="activity-meta"><strong>よういするもの：</strong>${activity.prep}</p>
+          </div>
+        </div>
+      `;
+      list.appendChild(li);
+
+      const header = li.querySelector(".activity-header");
+      const detail = li.querySelector(".activity-detail");
+      header.addEventListener("click", () => {
+        const expanded = header.getAttribute("aria-expanded") === "true";
+        header.setAttribute("aria-expanded", String(!expanded));
+        detail.classList.toggle("open", !expanded);
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // なぞり書き機能：指・マウスでSVG上をなぞって練習できるようにする
+  // ---------------------------------------------------------------
+
+  let isTracing = false;
+  let currentStrokePath = null;
+
+  function toSvgPoint(evt) {
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX;
+    pt.y = evt.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  function handleTraceStart(evt) {
+    if (!traceLayer) return;
+    evt.preventDefault();
+    isTracing = true;
+    svg.setPointerCapture(evt.pointerId);
+    const p = toSvgPoint(evt);
+    currentStrokePath = el("path", {
+      d: `M ${p.x.toFixed(2)} ${p.y.toFixed(2)}`,
+      fill: "none",
+      stroke: "#7C4DFF",
+      "stroke-width": 2.6,
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      opacity: "0.85"
+    });
+    traceLayer.appendChild(currentStrokePath);
+    moveTravelerIcon(p);
+    checkGoalProximity(p);
+  }
+
+  function handleTraceMove(evt) {
+    if (!isTracing || !currentStrokePath) return;
+    const p = toSvgPoint(evt);
+    const d = currentStrokePath.getAttribute("d") + ` L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
+    currentStrokePath.setAttribute("d", d);
+    moveTravelerIcon(p);
+    checkGoalProximity(p);
+  }
+
+  function handleTraceEnd() {
+    isTracing = false;
+    currentStrokePath = null;
+    if (travelerIcon) travelerIcon.setAttribute("opacity", "0");
+  }
+
+  function moveTravelerIcon(p) {
+    if (!travelerIcon) return;
+    travelerIcon.setAttribute("x", p.x.toFixed(2));
+    travelerIcon.setAttribute("y", (p.y - 6).toFixed(2));
+    travelerIcon.setAttribute("opacity", "1");
+  }
+
+  function clearTraces() {
+    if (traceLayer) {
+      while (traceLayer.firstChild) traceLayer.removeChild(traceLayer.firstChild);
+    }
+  }
+
+  svg.addEventListener("pointerdown", handleTraceStart);
+  svg.addEventListener("pointermove", handleTraceMove);
+  svg.addEventListener("pointerup", handleTraceEnd);
+  svg.addEventListener("pointercancel", handleTraceEnd);
+  svg.addEventListener("pointerleave", handleTraceEnd);
+
+  document.getElementById("btnClearTrace").addEventListener("click", clearTraces);
+
+  // ---------------------------------------------------------------
+  // イベント登録
+  // ---------------------------------------------------------------
+
+  lineTypeInputs.forEach((input) => input.addEventListener("change", buildWorksheet));
+  thicknessRange.addEventListener("input", () => {
+    thicknessValue.textContent = thicknessRange.value + "mm";
+    buildWorksheet();
+  });
+  endpointToggle.addEventListener("change", buildWorksheet);
+  document.getElementById("themeGroup").addEventListener("change", buildWorksheet);
+
+  // 持ち方ガイド トグル
+  const btnGripGuide = document.getElementById("btnGripGuide");
+  const gripGuide = document.getElementById("gripGuide");
+  btnGripGuide.addEventListener("click", () => {
+    const isVisible = gripGuide.classList.toggle("visible");
+    btnGripGuide.classList.toggle("active", isVisible);
+    btnGripGuide.textContent = isVisible ? "✋ 持ち方ガイドを閉じる" : "✋ 持ち方ガイドを見る";
+  });
+
+  // 事前アプローチ アコーディオン
+  const accordionToggle = document.getElementById("accordionToggle");
+  const accordionPanel = document.getElementById("accordionPanel");
+  accordionToggle.addEventListener("click", () => {
+    const expanded = accordionToggle.getAttribute("aria-expanded") === "true";
+    accordionToggle.setAttribute("aria-expanded", String(!expanded));
+    accordionPanel.classList.toggle("open", !expanded);
+  });
+
+  // 印刷ボタン
+  document.getElementById("btnPrint").addEventListener("click", () => {
+    window.print();
+  });
+
+  // 初期描画
+  renderThemes();
+  renderActivities();
+  buildWorksheet();
+})();
+</script>
+
+</body>
+</html>
