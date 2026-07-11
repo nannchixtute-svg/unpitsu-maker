@@ -668,9 +668,86 @@
   .traveler-icon{
     transition: opacity 0.25s ease;
   }
+
+  /* ============================================================ */
+  /* パスワードゲート（簡易版・クライアント側のみ）                  */
+  /* ============================================================ */
+  body.locked .app-layout{ display:none; }
+  .password-gate{
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg);
+    padding: 20px;
+  }
+  body:not(.locked) .password-gate{ display:none; }
+  .password-card{
+    background:#fff;
+    border-radius: var(--radius-lg);
+    padding: 32px 28px;
+    max-width: 340px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 6px 24px rgba(30,50,80,0.15);
+  }
+  .password-card h2{
+    color: var(--color-primary);
+    font-size: 1.1rem;
+    margin: 0 0 16px 0;
+  }
+  .password-card input[type="password"]{
+    width: 100%;
+    font-size: 1rem;
+    padding: 12px 14px;
+    border: 2px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    margin-bottom: 8px;
+  }
+  .password-card input:focus-visible{
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  .password-error{
+    color: #CE0000;
+    font-size: 0.85rem;
+    min-height: 1.3em;
+    margin: 0 0 10px 0;
+  }
+  .password-card .btn{ margin-top: 4px; }
+  @keyframes passwordShake{
+    10%, 90% { transform: translateX(-2px); }
+    20%, 80% { transform: translateX(4px); }
+    30%, 50%, 70% { transform: translateX(-8px); }
+    40%, 60% { transform: translateX(8px); }
+  }
+  .password-card.shake{ animation: passwordShake 0.4s; }
+  @media print{
+    .password-gate{ display:none !important; }
+  }
 </style>
 </head>
-<body>
+<body class="locked">
+<script>
+  if (sessionStorage.getItem("unpitsuUnlocked") === "true") {
+    document.body.classList.remove("locked");
+  }
+</script>
+
+<!-- ============================================================ -->
+<!-- パスワードゲート -->
+<!-- ============================================================ -->
+<div class="password-gate" id="passwordGate">
+  <form class="password-card" id="passwordForm">
+    <h2>🔒 パスワードを入力してください</h2>
+    <input type="password" id="passwordInput" autocomplete="off" placeholder="パスワード" required>
+    <p class="password-error" id="passwordError"></p>
+    <button type="submit" class="btn btn-print">入る</button>
+  </form>
+</div>
 
 <!-- ============================================================ -->
 <!-- HTML: 構造                                                    -->
@@ -1458,6 +1535,27 @@
   // 印刷ボタン
   document.getElementById("btnPrint").addEventListener("click", () => {
     window.print();
+  });
+
+  // パスワードゲート
+  const PASSWORD = "password123";
+  const passwordForm = document.getElementById("passwordForm");
+  const passwordInput = document.getElementById("passwordInput");
+  const passwordError = document.getElementById("passwordError");
+  passwordForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (passwordInput.value === PASSWORD) {
+      sessionStorage.setItem("unpitsuUnlocked", "true");
+      document.body.classList.remove("locked");
+      passwordError.textContent = "";
+    } else {
+      passwordError.textContent = "違います";
+      passwordInput.value = "";
+      passwordInput.focus();
+      passwordForm.classList.remove("shake");
+      void passwordForm.offsetWidth;
+      passwordForm.classList.add("shake");
+    }
   });
 
   // 初期描画
