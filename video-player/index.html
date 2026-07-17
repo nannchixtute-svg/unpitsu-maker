@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>インタラクティブ動画プレイヤー</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="player-container" class="player-container">
+
+    <video id="main-video" class="main-video" playsinline preload="metadata">
+      お使いのブラウザは video タグに対応していません。
+    </video>
+
+    <!-- 動的に生成されるボタンがここに挿入される -->
+    <div id="button-layer" class="button-layer" aria-live="polite"></div>
+
+    <!-- 中央再生ボタン（初回再生・一時停止解除用） -->
+    <button id="play-overlay" class="play-overlay" type="button" aria-label="再生する">
+      <svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor" aria-hidden="true">
+        <path d="M8 5v14l11-7z"></path>
+      </svg>
+    </button>
+
+    <!-- エラー表示 -->
+    <div id="error-banner" class="error-banner" role="alert" hidden></div>
+
+    <!-- ローディング表示 -->
+    <div id="loading-indicator" class="loading-indicator">
+      <div class="spinner"></div>
+      <span>読み込み中...</span>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

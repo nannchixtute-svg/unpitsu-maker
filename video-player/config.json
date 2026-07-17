@@ -1,0 +1,27 @@
+{
+  "videoUrl": "video.mp4",
+  "autoPauseAt": 10,
+  "buttons": [
+    {
+      "text": "もう一度見る",
+      "showAt": 3,
+      "hideAt": 10,
+      "action": "skip",
+      "targetTime": 0
+    },
+    {
+      "text": "公式サイトへ",
+      "showAt": 5,
+      "hideAt": 15,
+      "action": "link",
+      "linkUrl": "https://example.com"
+    },
+    {
+      "text": "続きを見る",
+      "showAt": 10,
+      "hideAt": 20,
+      "action": "skip",
+      "targetTime": 15
+    }
+  ]
+}
