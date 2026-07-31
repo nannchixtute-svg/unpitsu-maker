@@ -679,7 +679,7 @@
       const img = new Image();
       img.onload = () => {
         const swapped = photo.rotation % 180 !== 0;
-        const targetLongSide = 1800;
+        const targetLongSide = 2600;
         const longSide = Math.max(img.width, img.height);
         const scale = longSide < targetLongSide ? targetLongSide / longSide : 1;
         const scaledW = img.width * scale;
