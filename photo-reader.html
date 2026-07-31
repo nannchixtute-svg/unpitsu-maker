@@ -135,18 +135,66 @@
   }
   .photo-actions .btn{ flex:1; min-width:150px; }
 
-  .preview-wrap{
+  /* 複数写真のサムネイル一覧 */
+  .photo-grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap:10px;
     margin-top:14px;
-    display:none;
   }
-  .preview-wrap.visible{ display:block; }
-  .preview-wrap img{
-    display:block;
-    max-width:100%;
-    max-height: 320px;
-    margin: 0 auto;
+  .photo-thumb{
+    position:relative;
     border-radius: var(--radius-md);
+    overflow:hidden;
     border: 1px solid var(--color-border-soft);
+    background:#000;
+    aspect-ratio: 1 / 1;
+  }
+  .photo-thumb img{
+    width:100%;
+    height:100%;
+    object-fit: cover;
+    display:block;
+    transition: transform 0.2s ease;
+  }
+  .photo-thumb .thumb-order{
+    position:absolute;
+    top:4px; left:4px;
+    background: rgba(0,0,0,0.55);
+    color:#fff;
+    font-size:0.7rem;
+    font-weight:700;
+    padding:1px 7px;
+    border-radius:999px;
+  }
+  .photo-thumb .thumb-actions{
+    position:absolute;
+    bottom:4px;
+    left:4px; right:4px;
+    display:flex;
+    justify-content:space-between;
+    gap:4px;
+  }
+  .photo-thumb button{
+    min-height:0;
+    width:30px; height:30px;
+    padding:0;
+    border-radius:50%;
+    border:none;
+    background: rgba(255,255,255,0.92);
+    color: var(--color-text);
+    font-size:0.95rem;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .photo-thumb .thumb-remove{ color: var(--color-danger); }
+  .photo-count-hint{
+    font-size:0.8rem;
+    color: var(--color-text-soft);
+    margin-top:8px;
   }
 
   /* Buttons */
@@ -338,14 +386,14 @@
   <!-- ============================ 1. 写真を選ぶ ============================ -->
   <section class="panel-section">
     <h2><span class="badge">1</span>写真をえらぶ</h2>
-    <p class="section-hint">カメラで撮影するか、写真ファイルを選んでください。</p>
+    <p class="section-hint">カメラで撮影するか、写真ファイルを選んでください。複数枚まとめて選べます。写真が傾いている場合は回転ボタンでまっすぐに直すと読み取り精度が上がります。</p>
 
-    <div class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="写真をドラッグ＆ドロップ、またはクリックして選択">
+    <div class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="写真をドラッグ＆ドロップ、またはクリックして選択（複数可）">
       <span class="dz-icon" aria-hidden="true">🖼️</span>
-      <span class="dz-text">ここに写真をドラッグ＆ドロップ<br>またはタップして選択</span>
+      <span class="dz-text">ここに写真をドラッグ＆ドロップ<br>またはタップして選択（複数可）</span>
       <span class="dz-sub">JPEG / PNG などの画像ファイル</span>
     </div>
-    <input type="file" id="fileInput" class="file-input-visually-hidden" accept="image/*">
+    <input type="file" id="fileInput" class="file-input-visually-hidden" accept="image/*" multiple>
     <input type="file" id="cameraInput" class="file-input-visually-hidden" accept="image/*" capture="environment">
 
     <div class="photo-actions">
@@ -353,15 +401,14 @@
       <button type="button" class="btn btn-outline" id="btnCamera">📸 カメラで撮る</button>
     </div>
 
-    <div class="preview-wrap" id="previewWrap">
-      <img id="previewImg" alt="選択した写真のプレビュー">
-    </div>
+    <div class="photo-grid" id="photoGrid"></div>
+    <p class="photo-count-hint" id="photoCountHint"></p>
   </section>
 
   <!-- ============================ 2. 文字を読み取る ============================ -->
   <section class="panel-section">
     <h2><span class="badge">2</span>文字を読み取る</h2>
-    <p class="section-hint">写真から文字を読み取り、読みやすい文章に自動で整えます。</p>
+    <p class="section-hint">写真から文字を読み取り、読みやすい文章に自動で整えます。高精度モードを使うため、初回は言語データの読み込みに少し時間がかかります。</p>
 
     <div class="field-label" id="langLabel">読み取る言語</div>
     <select class="voice-select" id="ocrLang" aria-labelledby="langLabel">
@@ -370,7 +417,7 @@
       <option value="eng">英語のみ</option>
     </select>
 
-    <button type="button" class="btn btn-primary btn-block" id="btnExtract" style="margin-top:14px;" disabled>🔍 文字を読み取る</button>
+    <button type="button" class="btn btn-primary btn-block" id="btnExtract" style="margin-top:14px;" disabled>🔍 まとめて文字を読み取る</button>
 
     <div class="progress-wrap" id="progressWrap">
       <div class="progress-label">
@@ -439,8 +486,8 @@
   const cameraInput = document.getElementById("cameraInput");
   const btnPickFile = document.getElementById("btnPickFile");
   const btnCamera = document.getElementById("btnCamera");
-  const previewWrap = document.getElementById("previewWrap");
-  const previewImg = document.getElementById("previewImg");
+  const photoGrid = document.getElementById("photoGrid");
+  const photoCountHint = document.getElementById("photoCountHint");
 
   const ocrLangSelect = document.getElementById("ocrLang");
   const btnExtract = document.getElementById("btnExtract");
@@ -461,25 +508,88 @@
   const ttsStatus = document.getElementById("ttsStatus");
   const readDisplay = document.getElementById("readDisplay");
 
-  let selectedFile = null;
+  let photos = []; // { id, file, url, rotation }
+  let photoIdSeq = 0;
 
   // ---------------------------------------------------------------
-  // 1. 写真選択（ドラッグ＆ドロップ／ファイル選択／カメラ撮影）
+  // 1. 写真選択（ドラッグ＆ドロップ／複数ファイル選択／カメラ撮影）
   // ---------------------------------------------------------------
 
-  function handleFile(file) {
-    if (!file || !file.type.startsWith("image/")) {
+  function addFiles(fileList) {
+    const files = Array.from(fileList || []).filter((f) => f.type.startsWith("image/"));
+    if (!files.length) {
       showOcrStatus("画像ファイルを選んでください。", "error");
       return;
     }
-    selectedFile = file;
-    const url = URL.createObjectURL(file);
-    previewImg.src = url;
-    previewWrap.classList.add("visible");
-    btnExtract.disabled = false;
+    files.forEach((file) => {
+      photos.push({
+        id: ++photoIdSeq,
+        file,
+        url: URL.createObjectURL(file),
+        rotation: 0
+      });
+    });
     showOcrStatus("", "");
-    extractedText.value = "";
-    resetReadDisplay();
+    renderPhotoGrid();
+  }
+
+  function removePhoto(id) {
+    const target = photos.find((p) => p.id === id);
+    if (target) URL.revokeObjectURL(target.url);
+    photos = photos.filter((p) => p.id !== id);
+    renderPhotoGrid();
+  }
+
+  function rotatePhoto(id) {
+    const target = photos.find((p) => p.id === id);
+    if (!target) return;
+    target.rotation = (target.rotation + 90) % 360;
+    renderPhotoGrid();
+  }
+
+  function renderPhotoGrid() {
+    photoGrid.innerHTML = "";
+    photos.forEach((photo, index) => {
+      const thumb = document.createElement("div");
+      thumb.className = "photo-thumb";
+
+      const img = document.createElement("img");
+      img.src = photo.url;
+      img.alt = `選択した写真 ${index + 1}`;
+      img.style.transform = `rotate(${photo.rotation}deg)`;
+      thumb.appendChild(img);
+
+      const order = document.createElement("span");
+      order.className = "thumb-order";
+      order.textContent = String(index + 1);
+      thumb.appendChild(order);
+
+      const actions = document.createElement("div");
+      actions.className = "thumb-actions";
+
+      const rotateBtn = document.createElement("button");
+      rotateBtn.type = "button";
+      rotateBtn.title = "90度回転";
+      rotateBtn.setAttribute("aria-label", "写真を90度回転");
+      rotateBtn.textContent = "↻";
+      rotateBtn.addEventListener("click", () => rotatePhoto(photo.id));
+      actions.appendChild(rotateBtn);
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "thumb-remove";
+      removeBtn.title = "この写真を削除";
+      removeBtn.setAttribute("aria-label", "この写真を削除");
+      removeBtn.textContent = "×";
+      removeBtn.addEventListener("click", () => removePhoto(photo.id));
+      actions.appendChild(removeBtn);
+
+      thumb.appendChild(actions);
+      photoGrid.appendChild(thumb);
+    });
+
+    photoCountHint.textContent = photos.length ? `${photos.length}枚選択中` : "";
+    btnExtract.disabled = photos.length === 0;
   }
 
   dropZone.addEventListener("click", () => fileInput.click());
@@ -497,23 +607,77 @@
   dropZone.addEventListener("drop", (e) => {
     e.preventDefault();
     dropZone.classList.remove("dragover");
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files && e.dataTransfer.files.length) {
+      addFiles(e.dataTransfer.files);
     }
   });
 
   btnPickFile.addEventListener("click", () => fileInput.click());
   btnCamera.addEventListener("click", () => cameraInput.click());
   fileInput.addEventListener("change", () => {
-    if (fileInput.files && fileInput.files[0]) handleFile(fileInput.files[0]);
+    if (fileInput.files && fileInput.files.length) addFiles(fileInput.files);
+    fileInput.value = "";
   });
   cameraInput.addEventListener("change", () => {
-    if (cameraInput.files && cameraInput.files[0]) handleFile(cameraInput.files[0]);
+    if (cameraInput.files && cameraInput.files.length) addFiles(cameraInput.files);
+    cameraInput.value = "";
   });
 
   // ---------------------------------------------------------------
-  // 2. OCR（Tesseract.js）
+  // 2. OCR（Tesseract.js／高精度言語データ＋画像の前処理）
   // ---------------------------------------------------------------
+
+  // Tesseract.jsが公開している高精度（best）版の言語データ。
+  // 標準の高速（fast）版よりモデルサイズは大きいが認識精度が大幅に上がる。
+  const OCR_BEST_LANG_PATH = "https://tessdata.projectnaptha.com/4.0.0_best";
+
+  async function createOcrWorker(lang, logger) {
+    try {
+      return await Tesseract.createWorker(lang, 1, { langPath: OCR_BEST_LANG_PATH, logger });
+    } catch (err) {
+      // 高精度データの取得に失敗した場合は標準データにフォールバック
+      return await Tesseract.createWorker(lang, 1, { logger });
+    }
+  }
+
+  // 写真をCanvasに描画し、回転補正・拡大・グレースケール化・コントラスト強調を行う。
+  // 画像が小さい／傾いている／色が薄いといった、OCR精度を落とす要因を軽減する。
+  function preprocessPhoto(photo) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const swapped = photo.rotation % 180 !== 0;
+        const targetLongSide = 1800;
+        const longSide = Math.max(img.width, img.height);
+        const scale = longSide < targetLongSide ? targetLongSide / longSide : 1;
+        const scaledW = img.width * scale;
+        const scaledH = img.height * scale;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = swapped ? scaledH : scaledW;
+        canvas.height = swapped ? scaledW : scaledH;
+        const ctx = canvas.getContext("2d");
+
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate((photo.rotation * Math.PI) / 180);
+        ctx.drawImage(img, -scaledW / 2, -scaledH / 2, scaledW, scaledH);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        const contrast = 1.35;
+        for (let i = 0; i < data.length; i += 4) {
+          const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          const adjusted = Math.max(0, Math.min(255, (gray - 128) * contrast + 128));
+          data[i] = data[i + 1] = data[i + 2] = adjusted;
+        }
+        ctx.putImageData(imageData, 0, 0);
+
+        resolve(canvas);
+      };
+      img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
+      img.src = photo.url;
+    });
+  }
 
   function showOcrStatus(text, kind) {
     ocrStatus.textContent = text;
@@ -568,7 +732,7 @@
   }
 
   btnExtract.addEventListener("click", async () => {
-    if (!selectedFile || typeof Tesseract === "undefined") {
+    if (!photos.length || typeof Tesseract === "undefined") {
       showOcrStatus("写真を選んでからお試しください。", "error");
       return;
     }
@@ -579,46 +743,70 @@
     progressFill.style.width = "0%";
     showOcrStatus("", "");
 
+    const total = photos.length;
+    let worker = null;
+    let currentImageIndex = 0;
+
+    const logger = (m) => {
+      if (m.status) {
+        progressStage.textContent = ocrStageLabel(m.status, currentImageIndex, total);
+      }
+      if (typeof m.progress === "number" && m.status === "recognizing text") {
+        const overall = (currentImageIndex + m.progress) / total;
+        const pct = Math.round(overall * 100);
+        progressPercent.textContent = pct + "%";
+        progressFill.style.width = pct + "%";
+      }
+    };
+
     try {
       const lang = ocrLangSelect.value;
-      const { data } = await Tesseract.recognize(selectedFile, lang, {
-        logger: (m) => {
-          if (m.status) {
-            progressStage.textContent = ocrStageLabel(m.status);
-          }
-          if (typeof m.progress === "number") {
-            const pct = Math.round(m.progress * 100);
-            progressPercent.textContent = pct + "%";
-            progressFill.style.width = pct + "%";
-          }
-        }
-      });
+      worker = await createOcrWorker(lang, logger);
 
-      const normalized = normalizeOcrText(data.text || "");
-      extractedText.value = normalized.trim();
+      const results = [];
+      for (let i = 0; i < total; i++) {
+        currentImageIndex = i;
+        const photo = photos[i];
+        progressStage.textContent = ocrStageLabel("preparing image", currentImageIndex, total);
+
+        const canvas = await preprocessPhoto(photo);
+        const { data } = await worker.recognize(canvas);
+
+        const normalized = normalizeOcrText(data.text || "");
+        if (normalized) results.push(normalized);
+      }
+
+      extractedText.value = results.join("\n\n").trim();
 
       if (!extractedText.value) {
-        showOcrStatus("文字を読み取れませんでした。別の写真でお試しください。", "error");
+        showOcrStatus("文字を読み取れませんでした。写真の向きを直すか、別の写真でお試しください。", "error");
       } else {
-        showOcrStatus("文字を読み取りました。内容を確認してください。", "info");
+        showOcrStatus(
+          total > 1 ? `${total}枚の写真から文字を読み取りました。内容を確認してください。` : "文字を読み取りました。内容を確認してください。",
+          "info"
+        );
       }
+      resetReadDisplay();
     } catch (err) {
       showOcrStatus("読み取り中にエラーが発生しました：" + (err && err.message ? err.message : err), "error");
     } finally {
+      if (worker) await worker.terminate();
       btnExtract.disabled = false;
       progressWrap.classList.remove("visible");
     }
   });
 
-  function ocrStageLabel(status) {
+  function ocrStageLabel(status, index, total) {
+    const prefix = total > 1 ? `写真 ${index + 1}/${total}：` : "";
     const labels = {
+      "preparing image": "画像を準備中…",
       "loading tesseract core": "準備中…",
       "initializing tesseract": "準備中…",
-      "loading language traineddata": "言語データを読み込み中…",
+      "loading language traineddata": "言語データを読み込み中…（初回のみ）",
       "initializing api": "準備中…",
       "recognizing text": "文字を読み取り中…"
     };
-    return labels[status] || status;
+    return prefix + (labels[status] || status);
   }
 
   // ---------------------------------------------------------------
