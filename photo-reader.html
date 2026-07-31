@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>しゃしん読み上げツール | 写真文字起こし・音声読み上げ</title>
+
+<!-- ============================================================ -->
+<!-- STYLE: CSS                                                    -->
+<!-- ============================================================ -->
+<style>
+  :root{
+    --color-bg: #F8F8FB;
+    --color-panel: #ffffff;
+    --color-border: #CCCCCC;
+    --color-border-soft: #E3E3E6;
+    --color-text: #1A1A1A;
+    --color-text-soft: #767676;
+    --color-primary: #0017C1;
+    --color-primary-strong: #000E86;
+    --color-primary-soft: #E8F1FE;
+    --color-accent: #FB5B01;
+    --color-accent-soft: #FFEEE2;
+    --color-accent-text: #7A2E00;
+    --color-mint: #E6F5EC;
+    --color-mint-text: #115A36;
+    --color-danger: #CE0000;
+    --focus-ring: #0017C1;
+    --radius-lg: 14px;
+    --radius-md: 8px;
+    --tap-min: 48px;
+    font-size: 17px;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    margin:0;
+    padding:0;
+    min-height:100%;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "Meiryo", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.7;
+  }
+
+  h1, h2{ margin: 0 0 8px 0; }
+
+  a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible{
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  .page{
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px 16px 64px;
+  }
+
+  .app-title{
+    font-size: 1.5rem;
+    color: var(--color-primary);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .app-title .emoji{ font-size:1.7rem; }
+  .app-subtitle{
+    font-size: 0.9rem;
+    color: var(--color-text-soft);
+    margin-bottom: 20px;
+  }
+
+  .panel-section{
+    background: var(--color-panel);
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-lg);
+    padding: 18px;
+    margin-bottom: 18px;
+  }
+  .panel-section h2{
+    font-size: 1.05rem;
+    color: var(--color-primary);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .panel-section h2 .badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:26px; height:26px;
+    border-radius:50%;
+    background: var(--color-primary);
+    color:#fff;
+    font-size:0.8rem;
+    flex-shrink:0;
+  }
+  .section-hint{
+    font-size: 0.82rem;
+    color: var(--color-text-soft);
+    margin: 0 0 12px 0;
+  }
+
+  /* 写真選択エリア */
+  .drop-zone{
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 24px 16px;
+    text-align:center;
+    cursor:pointer;
+    background: var(--color-bg);
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .drop-zone.dragover{
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+  }
+  .drop-zone .dz-icon{ font-size: 2.2rem; display:block; margin-bottom:6px; }
+  .drop-zone .dz-text{ font-weight:700; color: var(--color-text); }
+  .drop-zone .dz-sub{ font-size:0.78rem; color: var(--color-text-soft); margin-top:4px; }
+  .file-input-visually-hidden{
+    position:absolute;
+    width:1px; height:1px;
+    overflow:hidden;
+    clip:rect(0 0 0 0);
+  }
+
+  .photo-actions{
+    display:flex;
+    gap:10px;
+    margin-top:12px;
+    flex-wrap:wrap;
+  }
+  .photo-actions .btn{ flex:1; min-width:150px; }
+
+  .preview-wrap{
+    margin-top:14px;
+    display:none;
+  }
+  .preview-wrap.visible{ display:block; }
+  .preview-wrap img{
+    display:block;
+    max-width:100%;
+    max-height: 320px;
+    margin: 0 auto;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-soft);
+  }
+
+  /* Buttons */
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    min-height: var(--tap-min);
+    padding: 12px 18px;
+    border-radius: var(--radius-md);
+    border: 2px solid transparent;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.08s ease, filter 0.15s ease, opacity 0.15s ease;
+    font-family: inherit;
+  }
+  .btn:active{ transform: scale(0.97); }
+  .btn:disabled{ opacity:0.45; cursor:not-allowed; transform:none; }
+  .btn-primary{
+    background: var(--color-primary);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled){ background: var(--color-primary-strong); }
+  .btn-accent{
+    background: var(--color-accent);
+    color: #fff;
+  }
+  .btn-outline{
+    background: #fff;
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+  }
+  .btn-outline:hover:not(:disabled){ background: var(--color-primary-soft); }
+  .btn-ghost{
+    background: #fff;
+    color: var(--color-text-soft);
+    border-color: var(--color-border);
+  }
+  .btn-block{ width:100%; }
+
+  /* 進捗バー */
+  .progress-wrap{
+    margin-top:14px;
+    display:none;
+  }
+  .progress-wrap.visible{ display:block; }
+  .progress-label{
+    font-size:0.82rem;
+    color: var(--color-primary);
+    font-weight:700;
+    margin-bottom:6px;
+    display:flex;
+    justify-content:space-between;
+  }
+  .progress-track{
+    width:100%;
+    height:14px;
+    background: var(--color-border-soft);
+    border-radius:999px;
+    overflow:hidden;
+  }
+  .progress-fill{
+    height:100%;
+    width:0%;
+    background: var(--color-primary);
+    border-radius:999px;
+    transition: width 0.2s ease;
+  }
+
+  /* 文章編集エリア */
+  textarea#extractedText{
+    width:100%;
+    min-height: 180px;
+    font-size: 1rem;
+    line-height:1.8;
+    padding: 12px 14px;
+    border: 2px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    resize: vertical;
+  }
+  .textarea-placeholder-note{
+    font-size:0.78rem;
+    color: var(--color-text-soft);
+    margin-top:6px;
+  }
+
+  /* 読み上げ表示エリア */
+  .read-display{
+    border: 2px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    min-height: 100px;
+    font-size: 1.05rem;
+    line-height:2;
+    background: var(--color-bg);
+    display:none;
+  }
+  .read-display.visible{ display:block; }
+  .read-display .sentence{
+    transition: background 0.15s ease, color 0.15s ease;
+    border-radius:4px;
+    padding: 1px 2px;
+  }
+  .read-display .sentence.active{
+    background: var(--color-accent);
+    color:#fff;
+  }
+
+  /* 読み上げコントロール */
+  .field-label{
+    font-size:0.9rem;
+    font-weight:700;
+    color: var(--color-text-soft);
+    margin: 14px 0 8px 0;
+  }
+  .voice-select{
+    width:100%;
+    min-height: var(--tap-min);
+    font-size:0.95rem;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    border: 2px solid var(--color-border);
+    font-family: inherit;
+    background:#fff;
+  }
+  .range-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  input[type="range"]{
+    flex:1;
+    accent-color: var(--color-primary);
+    height: 28px;
+  }
+  .range-value{
+    font-size:0.9rem;
+    color: var(--color-primary);
+    font-weight:700;
+    min-width: 52px;
+    text-align:right;
+  }
+  .range-hint{
+    display:flex;
+    justify-content:space-between;
+    font-size:0.76rem;
+    color: var(--color-text-soft);
+    margin-top:4px;
+  }
+
+  .playback-controls{
+    display:flex;
+    gap:10px;
+    margin-top:16px;
+    flex-wrap:wrap;
+  }
+  .playback-controls .btn{ flex:1; min-width:110px; }
+
+  .status-msg{
+    font-size:0.85rem;
+    margin-top:10px;
+    min-height:1.2em;
+  }
+  .status-msg.error{ color: var(--color-danger); font-weight:700; }
+  .status-msg.info{ color: var(--color-mint-text); font-weight:700; }
+
+  .footer-note{
+    font-size:0.75rem;
+    color: var(--color-text-soft);
+    text-align:center;
+    margin-top: 8px;
+  }
+
+  @media screen and (max-width: 480px){
+    :root{ font-size: 15px; }
+    .page{ padding: 16px 10px 48px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1 class="app-title"><span class="emoji">📷</span>しゃしん読み上げツール</h1>
+  <p class="app-subtitle">写真の文字を読み取り、自然な文章に整えて音声で読み上げます（速度は最大2倍まで調整できます）</p>
+
+  <!-- ============================ 1. 写真を選ぶ ============================ -->
+  <section class="panel-section">
+    <h2><span class="badge">1</span>写真をえらぶ</h2>
+    <p class="section-hint">カメラで撮影するか、写真ファイルを選んでください。</p>
+
+    <div class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="写真をドラッグ＆ドロップ、またはクリックして選択">
+      <span class="dz-icon" aria-hidden="true">🖼️</span>
+      <span class="dz-text">ここに写真をドラッグ＆ドロップ<br>またはタップして選択</span>
+      <span class="dz-sub">JPEG / PNG などの画像ファイル</span>
+    </div>
+    <input type="file" id="fileInput" class="file-input-visually-hidden" accept="image/*">
+    <input type="file" id="cameraInput" class="file-input-visually-hidden" accept="image/*" capture="environment">
+
+    <div class="photo-actions">
+      <button type="button" class="btn btn-outline" id="btnPickFile">🗂️ 写真を選ぶ</button>
+      <button type="button" class="btn btn-outline" id="btnCamera">📸 カメラで撮る</button>
+    </div>
+
+    <div class="preview-wrap" id="previewWrap">
+      <img id="previewImg" alt="選択した写真のプレビュー">
+    </div>
+  </section>
+
+  <!-- ============================ 2. 文字を読み取る ============================ -->
+  <section class="panel-section">
+    <h2><span class="badge">2</span>文字を読み取る</h2>
+    <p class="section-hint">写真から文字を読み取り、読みやすい文章に自動で整えます。</p>
+
+    <div class="field-label" id="langLabel">読み取る言語</div>
+    <select class="voice-select" id="ocrLang" aria-labelledby="langLabel">
+      <option value="jpn+eng" selected>日本語＋英語</option>
+      <option value="jpn">日本語のみ</option>
+      <option value="eng">英語のみ</option>
+    </select>
+
+    <button type="button" class="btn btn-primary btn-block" id="btnExtract" style="margin-top:14px;" disabled>🔍 文字を読み取る</button>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-label">
+        <span id="progressStage">準備中…</span>
+        <span id="progressPercent">0%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+
+    <p class="status-msg" id="ocrStatus"></p>
+  </section>
+
+  <!-- ============================ 3. 文章の確認・編集 ============================ -->
+  <section class="panel-section">
+    <h2><span class="badge">3</span>文章を確認・編集</h2>
+    <p class="section-hint">読み取り結果です。読み上げる前に自由に修正できます。</p>
+    <textarea id="extractedText" placeholder="ここに読み取った文章が表示されます。編集もできます。"></textarea>
+    <p class="textarea-placeholder-note">誤読があれば、ここで直してから読み上げてください。</p>
+  </section>
+
+  <!-- ============================ 4. 読み上げ ============================ -->
+  <section class="panel-section">
+    <h2><span class="badge">4</span>読み上げる</h2>
+
+    <div class="field-label" id="voiceLabel">声（音声）をえらぶ</div>
+    <select class="voice-select" id="voiceSelect" aria-labelledby="voiceLabel">
+      <option value="">読み込み中…</option>
+    </select>
+
+    <label class="field-label" for="speedRange">読み上げ速度</label>
+    <div class="range-row">
+      <input type="range" id="speedRange" min="0.5" max="2" step="0.1" value="1">
+      <span class="range-value" id="speedValue">1.0倍</span>
+    </div>
+    <div class="range-hint">
+      <span>0.5倍（ゆっくり）</span>
+      <span>2.0倍（はやい）</span>
+    </div>
+
+    <div class="playback-controls">
+      <button type="button" class="btn btn-accent" id="btnPlay">▶️ 読み上げる</button>
+      <button type="button" class="btn btn-outline" id="btnPause" disabled>⏸️ 一時停止</button>
+      <button type="button" class="btn btn-ghost" id="btnStop" disabled>⏹️ 停止</button>
+    </div>
+
+    <p class="status-msg" id="ttsStatus"></p>
+
+    <div class="read-display" id="readDisplay" aria-live="polite"></div>
+  </section>
+
+  <p class="footer-note">画像の読み取りと音声読み上げは、すべてこの端末（ブラウザ）内で処理されます。</p>
+</div>
+
+<!-- Tesseract.js（クライアント側OCRライブラリ） -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------------------------------------------------------------
+  // 要素参照
+  // ---------------------------------------------------------------
+  const dropZone = document.getElementById("dropZone");
+  const fileInput = document.getElementById("fileInput");
+  const cameraInput = document.getElementById("cameraInput");
+  const btnPickFile = document.getElementById("btnPickFile");
+  const btnCamera = document.getElementById("btnCamera");
+  const previewWrap = document.getElementById("previewWrap");
+  const previewImg = document.getElementById("previewImg");
+
+  const ocrLangSelect = document.getElementById("ocrLang");
+  const btnExtract = document.getElementById("btnExtract");
+  const progressWrap = document.getElementById("progressWrap");
+  const progressStage = document.getElementById("progressStage");
+  const progressPercent = document.getElementById("progressPercent");
+  const progressFill = document.getElementById("progressFill");
+  const ocrStatus = document.getElementById("ocrStatus");
+
+  const extractedText = document.getElementById("extractedText");
+
+  const voiceSelect = document.getElementById("voiceSelect");
+  const speedRange = document.getElementById("speedRange");
+  const speedValue = document.getElementById("speedValue");
+  const btnPlay = document.getElementById("btnPlay");
+  const btnPause = document.getElementById("btnPause");
+  const btnStop = document.getElementById("btnStop");
+  const ttsStatus = document.getElementById("ttsStatus");
+  const readDisplay = document.getElementById("readDisplay");
+
+  let selectedFile = null;
+
+  // ---------------------------------------------------------------
+  // 1. 写真選択（ドラッグ＆ドロップ／ファイル選択／カメラ撮影）
+  // ---------------------------------------------------------------
+
+  function handleFile(file) {
+    if (!file || !file.type.startsWith("image/")) {
+      showOcrStatus("画像ファイルを選んでください。", "error");
+      return;
+    }
+    selectedFile = file;
+    const url = URL.createObjectURL(file);
+    previewImg.src = url;
+    previewWrap.classList.add("visible");
+    btnExtract.disabled = false;
+    showOcrStatus("", "");
+    extractedText.value = "";
+    resetReadDisplay();
+  }
+
+  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  dropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropZone.classList.add("dragover");
+  });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("dragover");
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  btnPickFile.addEventListener("click", () => fileInput.click());
+  btnCamera.addEventListener("click", () => cameraInput.click());
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files && fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+  cameraInput.addEventListener("change", () => {
+    if (cameraInput.files && cameraInput.files[0]) handleFile(cameraInput.files[0]);
+  });
+
+  // ---------------------------------------------------------------
+  // 2. OCR（Tesseract.js）
+  // ---------------------------------------------------------------
+
+  function showOcrStatus(text, kind) {
+    ocrStatus.textContent = text;
+    ocrStatus.className = "status-msg" + (kind ? " " + kind : "");
+  }
+
+  function showTtsStatus(text, kind) {
+    ttsStatus.textContent = text;
+    ttsStatus.className = "status-msg" + (kind ? " " + kind : "");
+  }
+
+  // OCR結果を「自然な文章」に整える：
+  // 画像内の行送りによる不要な改行をつなぎ、空行だけを段落の区切りとして残す。
+  function normalizeOcrText(raw) {
+    const lines = raw.replace(/\r\n?/g, "\n").split("\n").map((l) => l.trim());
+    const paragraphs = [];
+    let current = [];
+
+    const flush = () => {
+      if (current.length) {
+        paragraphs.push(joinLines(current));
+        current = [];
+      }
+    };
+
+    lines.forEach((line) => {
+      if (line === "") {
+        flush();
+      } else {
+        current.push(line);
+      }
+    });
+    flush();
+
+    return paragraphs.join("\n\n");
+  }
+
+  function joinLines(lines) {
+    let result = "";
+    lines.forEach((line, i) => {
+      if (i === 0) {
+        result = line;
+        return;
+      }
+      const prevChar = result.slice(-1);
+      const nextChar = line.charAt(0);
+      const isAsciiWordChar = (ch) => /[A-Za-z0-9]/.test(ch);
+      // 半角英数字同士がつながる場合のみ半角スペースを挟む（日本語はそのまま連結）
+      result += (isAsciiWordChar(prevChar) && isAsciiWordChar(nextChar) ? " " : "") + line;
+    });
+    return result;
+  }
+
+  btnExtract.addEventListener("click", async () => {
+    if (!selectedFile || typeof Tesseract === "undefined") {
+      showOcrStatus("写真を選んでからお試しください。", "error");
+      return;
+    }
+    btnExtract.disabled = true;
+    progressWrap.classList.add("visible");
+    progressStage.textContent = "準備中…";
+    progressPercent.textContent = "0%";
+    progressFill.style.width = "0%";
+    showOcrStatus("", "");
+
+    try {
+      const lang = ocrLangSelect.value;
+      const { data } = await Tesseract.recognize(selectedFile, lang, {
+        logger: (m) => {
+          if (m.status) {
+            progressStage.textContent = ocrStageLabel(m.status);
+          }
+          if (typeof m.progress === "number") {
+            const pct = Math.round(m.progress * 100);
+            progressPercent.textContent = pct + "%";
+            progressFill.style.width = pct + "%";
+          }
+        }
+      });
+
+      const normalized = normalizeOcrText(data.text || "");
+      extractedText.value = normalized.trim();
+
+      if (!extractedText.value) {
+        showOcrStatus("文字を読み取れませんでした。別の写真でお試しください。", "error");
+      } else {
+        showOcrStatus("文字を読み取りました。内容を確認してください。", "info");
+      }
+    } catch (err) {
+      showOcrStatus("読み取り中にエラーが発生しました：" + (err && err.message ? err.message : err), "error");
+    } finally {
+      btnExtract.disabled = false;
+      progressWrap.classList.remove("visible");
+    }
+  });
+
+  function ocrStageLabel(status) {
+    const labels = {
+      "loading tesseract core": "準備中…",
+      "initializing tesseract": "準備中…",
+      "loading language traineddata": "言語データを読み込み中…",
+      "initializing api": "準備中…",
+      "recognizing text": "文字を読み取り中…"
+    };
+    return labels[status] || status;
+  }
+
+  // ---------------------------------------------------------------
+  // 3. 読み上げ（Web Speech API）
+  // ---------------------------------------------------------------
+
+  const synth = window.speechSynthesis;
+  let voices = [];
+  let sentences = [];
+  let sentenceSpans = [];
+  let currentIndex = 0;
+  let isPlaying = false;
+  let isPaused = false;
+
+  function populateVoices() {
+    if (!synth) return;
+    voices = synth.getVoices();
+    if (!voices.length) return;
+
+    voiceSelect.innerHTML = "";
+    const jaVoices = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith("ja"));
+    const others = voices.filter((v) => !(v.lang && v.lang.toLowerCase().startsWith("ja")));
+    const ordered = jaVoices.concat(others);
+
+    ordered.forEach((v, i) => {
+      const opt = document.createElement("option");
+      opt.value = String(voices.indexOf(v));
+      opt.textContent = `${v.name} (${v.lang})`;
+      voiceSelect.appendChild(opt);
+    });
+
+    if (jaVoices.length) {
+      voiceSelect.value = String(voices.indexOf(jaVoices[0]));
+    }
+  }
+
+  if (synth) {
+    populateVoices();
+    synth.addEventListener("voiceschanged", populateVoices);
+  } else {
+    voiceSelect.innerHTML = '<option value="">この端末では音声読み上げに対応していません</option>';
+    btnPlay.disabled = true;
+  }
+
+  speedRange.addEventListener("input", () => {
+    speedValue.textContent = parseFloat(speedRange.value).toFixed(1) + "倍";
+  });
+
+  function resetReadDisplay() {
+    readDisplay.innerHTML = "";
+    readDisplay.classList.remove("visible");
+    sentences = [];
+    sentenceSpans = [];
+    currentIndex = 0;
+  }
+
+  // 文章を「。！？」などの文末記号で区切り、1文ずつ読み上げられるようにする
+  function splitIntoSentences(text) {
+    const parts = text
+      .replace(/\n+/g, "\n")
+      .split(/(?<=[。！？!?])\s*/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    return parts;
+  }
+
+  function buildReadDisplay(text) {
+    sentences = splitIntoSentences(text);
+    readDisplay.innerHTML = "";
+    sentenceSpans = sentences.map((sentence, i) => {
+      const span = document.createElement("span");
+      span.className = "sentence";
+      span.textContent = sentence + " ";
+      readDisplay.appendChild(span);
+      return span;
+    });
+    readDisplay.classList.add("visible");
+  }
+
+  function highlightSentence(index) {
+    sentenceSpans.forEach((span, i) => {
+      span.classList.toggle("active", i === index);
+    });
+    if (sentenceSpans[index]) {
+      sentenceSpans[index].scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }
+
+  function speakSentence(index) {
+    if (index >= sentences.length) {
+      finishPlayback();
+      return;
+    }
+    currentIndex = index;
+    highlightSentence(index);
+
+    const utterance = new SpeechSynthesisUtterance(sentences[index]);
+    const rate = parseFloat(speedRange.value);
+    utterance.rate = Math.min(2, Math.max(0.5, rate));
+
+    const voiceIdx = voiceSelect.value;
+    if (voiceIdx !== "" && voices[voiceIdx]) {
+      utterance.voice = voices[voiceIdx];
+      utterance.lang = voices[voiceIdx].lang;
+    } else {
+      utterance.lang = "ja-JP";
+    }
+
+    utterance.onend = () => {
+      if (isPlaying && !isPaused) {
+        speakSentence(index + 1);
+      }
+    };
+    utterance.onerror = () => {
+      finishPlayback();
+      showTtsStatus("読み上げ中にエラーが発生しました。", "error");
+    };
+
+    synth.speak(utterance);
+  }
+
+  function startPlayback() {
+    const text = extractedText.value.trim();
+    if (!text) {
+      showTtsStatus("読み上げる文章がありません。先に文字を読み取るか、入力してください。", "error");
+      return;
+    }
+    if (!synth) return;
+
+    synth.cancel();
+    buildReadDisplay(text);
+    isPlaying = true;
+    isPaused = false;
+    showTtsStatus("読み上げ中…", "info");
+    updatePlaybackButtons();
+    speakSentence(0);
+  }
+
+  function finishPlayback() {
+    isPlaying = false;
+    isPaused = false;
+    updatePlaybackButtons();
+    sentenceSpans.forEach((span) => span.classList.remove("active"));
+    showTtsStatus("読み上げが終わりました。", "info");
+  }
+
+  function togglePause() {
+    if (!synth) return;
+    if (!isPaused) {
+      synth.pause();
+      isPaused = true;
+      showTtsStatus("一時停止中", "info");
+    } else {
+      synth.resume();
+      isPaused = false;
+      showTtsStatus("読み上げ中…", "info");
+    }
+    updatePlaybackButtons();
+  }
+
+  function stopPlayback() {
+    if (!synth) return;
+    isPlaying = false;
+    isPaused = false;
+    synth.cancel();
+    sentenceSpans.forEach((span) => span.classList.remove("active"));
+    updatePlaybackButtons();
+    showTtsStatus("", "");
+  }
+
+  function updatePlaybackButtons() {
+    btnPlay.disabled = isPlaying && !isPaused;
+    btnPause.disabled = !isPlaying;
+    btnStop.disabled = !isPlaying;
+    btnPause.textContent = isPaused ? "▶️ 再開" : "⏸️ 一時停止";
+  }
+
+  btnPlay.addEventListener("click", startPlayback);
+  btnPause.addEventListener("click", togglePause);
+  btnStop.addEventListener("click", stopPlayback);
+
+  window.addEventListener("beforeunload", () => {
+    if (synth) synth.cancel();
+  });
+})();
+</script>
+
+</body>
+</html>
