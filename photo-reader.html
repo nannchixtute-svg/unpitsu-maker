@@ -237,6 +237,22 @@
   }
   .btn-block{ width:100%; }
 
+  .toggle-row{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    margin-top:14px;
+    font-size:0.85rem;
+    line-height:1.5;
+    color: var(--color-text);
+  }
+  .toggle-row input[type="checkbox"]{
+    width:22px; height:22px;
+    accent-color: var(--color-primary);
+    flex-shrink:0;
+    margin-top:1px;
+  }
+
   /* 進捗バー */
   .progress-wrap{
     margin-top:14px;
@@ -417,6 +433,11 @@
       <option value="eng">英語のみ</option>
     </select>
 
+    <div class="toggle-row">
+      <input type="checkbox" id="verticalToggle">
+      <label for="verticalToggle">縦書きの文章として読み取る（本・雑誌など。写真は先に回転ボタンでまっすぐ直してください）</label>
+    </div>
+
     <button type="button" class="btn btn-primary btn-block" id="btnExtract" style="margin-top:14px;" disabled>🔍 まとめて文字を読み取る</button>
 
     <div class="progress-wrap" id="progressWrap">
@@ -490,6 +511,7 @@
   const photoCountHint = document.getElementById("photoCountHint");
 
   const ocrLangSelect = document.getElementById("ocrLang");
+  const verticalToggle = document.getElementById("verticalToggle");
   const btnExtract = document.getElementById("btnExtract");
   const progressWrap = document.getElementById("progressWrap");
   const progressStage = document.getElementById("progressStage");
@@ -640,6 +662,16 @@
     }
   }
 
+  // 縦書き（本・雑誌など）の場合は、各言語コードを縦書き用データに置き換える
+  // （例："jpn+eng" → "jpn_vert+eng"）。縦書き用データがない言語はそのまま使う。
+  function toVerticalLang(lang) {
+    const verticalizable = { jpn: "jpn_vert" };
+    return lang
+      .split("+")
+      .map((code) => verticalizable[code] || code)
+      .join("+");
+  }
+
   // 写真をCanvasに描画し、回転補正・拡大・グレースケール化・コントラスト強調を行う。
   // 画像が小さい／傾いている／色が薄いといった、OCR精度を落とす要因を軽減する。
   function preprocessPhoto(photo) {
@@ -760,8 +792,15 @@
     };
 
     try {
-      const lang = ocrLangSelect.value;
+      const isVertical = verticalToggle.checked;
+      const lang = isVertical ? toVerticalLang(ocrLangSelect.value) : ocrLangSelect.value;
       worker = await createOcrWorker(lang, logger);
+      const psm = Tesseract.PSM || {};
+      await worker.setParameters({
+        tessedit_pageseg_mode: isVertical
+          ? (psm.SINGLE_BLOCK_VERT_TEXT != null ? psm.SINGLE_BLOCK_VERT_TEXT : "5")
+          : (psm.AUTO != null ? psm.AUTO : "3")
+      });
 
       const results = [];
       for (let i = 0; i < total; i++) {
