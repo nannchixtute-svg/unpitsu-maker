@@ -455,8 +455,9 @@
   <section class="panel-section">
     <h2><span class="badge">3</span>文章を確認・編集</h2>
     <p class="section-hint">読み取り結果です。読み上げる前に自由に修正できます。</p>
-    <textarea id="extractedText" placeholder="ここに読み取った文章が表示されます。編集もできます。"></textarea>
-    <p class="textarea-placeholder-note">誤読があれば、ここで直してから読み上げてください。</p>
+    <textarea id="extractedText" placeholder="ここに読み取った文章が表示されます。文章を直接貼り付けることもできます。"></textarea>
+    <p class="textarea-placeholder-note">誤読があれば、ここで直してから読み上げてください。入力内容はこの端末に一時保存され、次回開いたときに復元されます。</p>
+    <button type="button" class="btn btn-ghost" id="btnClearSaved" style="margin-top:8px;">🗑️ 保存した文章を消去</button>
   </section>
 
   <!-- ============================ 4. 読み上げ ============================ -->
@@ -479,10 +480,19 @@
     </div>
 
     <div class="playback-controls">
+      <button type="button" class="btn btn-outline" id="btnPrevSentence" disabled>⏮️ 前の文</button>
       <button type="button" class="btn btn-accent" id="btnPlay">▶️ 読み上げる</button>
       <button type="button" class="btn btn-outline" id="btnPause" disabled>⏸️ 一時停止</button>
+      <button type="button" class="btn btn-outline" id="btnNextSentence" disabled>⏭️ 次の文</button>
       <button type="button" class="btn btn-ghost" id="btnStop" disabled>⏹️ 停止</button>
     </div>
+
+    <div class="playback-controls" style="margin-top:10px;">
+      <button type="button" class="btn btn-outline" id="btnRewind" disabled>⏪ 巻き戻し（5文）</button>
+      <button type="button" class="btn btn-outline" id="btnForward" disabled>⏩ 早送り（5文）</button>
+    </div>
+
+    <p class="section-hint" style="margin-top:10px;">読み上げは音声合成のため、途中を秒単位で早送りすることはできません。かわりに文単位で前後にスキップできます。再生中はロック画面・通知センターの再生コントロールからも一時停止／再開／前後の文への移動ができます（対応ブラウザのみ）。画面ロック中も再生が続くかは端末やブラウザにより異なります。</p>
 
     <p class="status-msg" id="ttsStatus"></p>
 
@@ -520,15 +530,65 @@
   const ocrStatus = document.getElementById("ocrStatus");
 
   const extractedText = document.getElementById("extractedText");
+  const btnClearSaved = document.getElementById("btnClearSaved");
 
   const voiceSelect = document.getElementById("voiceSelect");
   const speedRange = document.getElementById("speedRange");
   const speedValue = document.getElementById("speedValue");
+  const btnPrevSentence = document.getElementById("btnPrevSentence");
   const btnPlay = document.getElementById("btnPlay");
   const btnPause = document.getElementById("btnPause");
+  const btnNextSentence = document.getElementById("btnNextSentence");
   const btnStop = document.getElementById("btnStop");
+  const btnRewind = document.getElementById("btnRewind");
+  const btnForward = document.getElementById("btnForward");
   const ttsStatus = document.getElementById("ttsStatus");
   const readDisplay = document.getElementById("readDisplay");
+
+  // ---------------------------------------------------------------
+  // 文章の一時保存（この端末のブラウザにのみ保存。サーバーには送信されない）
+  // ---------------------------------------------------------------
+  const TEXT_STORAGE_KEY = "photoReaderSavedText";
+  let saveTimer = null;
+
+  function setExtractedText(value) {
+    extractedText.value = value;
+    persistText(value);
+  }
+
+  function persistText(value) {
+    try {
+      if (value && value.trim()) {
+        localStorage.setItem(TEXT_STORAGE_KEY, value);
+      } else {
+        localStorage.removeItem(TEXT_STORAGE_KEY);
+      }
+    } catch (err) {
+      // プライベートブラウズ等でlocalStorageが使えない場合は何もしない
+    }
+  }
+
+  function restoreSavedText() {
+    try {
+      const saved = localStorage.getItem(TEXT_STORAGE_KEY);
+      if (saved) {
+        extractedText.value = saved;
+        showOcrStatus("前回保存した文章を復元しました。", "info");
+      }
+    } catch (err) {
+      // 何もしない
+    }
+  }
+
+  extractedText.addEventListener("input", () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => persistText(extractedText.value), 400);
+  });
+
+  btnClearSaved.addEventListener("click", () => {
+    persistText("");
+    showOcrStatus("保存していた文章を消去しました。", "info");
+  });
 
   let photos = []; // { id, file, url, rotation }
   let photoIdSeq = 0;
@@ -815,7 +875,7 @@
         if (normalized) results.push(normalized);
       }
 
-      extractedText.value = results.join("\n\n").trim();
+      setExtractedText(results.join("\n\n").trim());
 
       if (!extractedText.value) {
         showOcrStatus("文字を読み取れませんでした。写真の向きを直すか、別の写真でお試しください。", "error");
@@ -941,6 +1001,7 @@
     }
     currentIndex = index;
     highlightSentence(index);
+    updatePlaybackButtons();
 
     const utterance = new SpeechSynthesisUtterance(sentences[index]);
     const rate = parseFloat(speedRange.value);
@@ -980,6 +1041,8 @@
     isPlaying = true;
     isPaused = false;
     showTtsStatus("読み上げ中…", "info");
+    updateMediaSessionMetadata();
+    setMediaSessionState("playing");
     updatePlaybackButtons();
     speakSentence(0);
   }
@@ -990,6 +1053,7 @@
     updatePlaybackButtons();
     sentenceSpans.forEach((span) => span.classList.remove("active"));
     showTtsStatus("読み上げが終わりました。", "info");
+    setMediaSessionState("none");
   }
 
   function togglePause() {
@@ -998,10 +1062,12 @@
       synth.pause();
       isPaused = true;
       showTtsStatus("一時停止中", "info");
+      setMediaSessionState("paused");
     } else {
       synth.resume();
       isPaused = false;
       showTtsStatus("読み上げ中…", "info");
+      setMediaSessionState("playing");
     }
     updatePlaybackButtons();
   }
@@ -1014,22 +1080,87 @@
     sentenceSpans.forEach((span) => span.classList.remove("active"));
     updatePlaybackButtons();
     showTtsStatus("", "");
+    setMediaSessionState("none");
+  }
+
+  // 前後の文へ手動で移動する（ロック画面の「前へ／次へ」操作、早送り・巻き戻しにも使う）
+  // 範囲外を指定した場合は先頭／末尾にクランプする。
+  function skipToSentence(index) {
+    if (!sentences.length) return;
+    const clamped = Math.max(0, Math.min(sentences.length - 1, index));
+    synth.cancel();
+    isPlaying = true;
+    isPaused = false;
+    showTtsStatus("読み上げ中…", "info");
+    setMediaSessionState("playing");
+    updatePlaybackButtons();
+    speakSentence(clamped);
   }
 
   function updatePlaybackButtons() {
     btnPlay.disabled = isPlaying && !isPaused;
     btnPause.disabled = !isPlaying;
     btnStop.disabled = !isPlaying;
+    btnPrevSentence.disabled = !isPlaying || currentIndex <= 0;
+    btnNextSentence.disabled = !isPlaying || currentIndex >= sentences.length - 1;
+    btnRewind.disabled = !isPlaying || currentIndex <= 0;
+    btnForward.disabled = !isPlaying || currentIndex >= sentences.length - 1;
     btnPause.textContent = isPaused ? "▶️ 再開" : "⏸️ 一時停止";
   }
+
+  const SEEK_STEP = 5; // 早送り・巻き戻しでスキップする文の数
 
   btnPlay.addEventListener("click", startPlayback);
   btnPause.addEventListener("click", togglePause);
   btnStop.addEventListener("click", stopPlayback);
+  btnPrevSentence.addEventListener("click", () => skipToSentence(currentIndex - 1));
+  btnNextSentence.addEventListener("click", () => skipToSentence(currentIndex + 1));
+  btnRewind.addEventListener("click", () => skipToSentence(currentIndex - SEEK_STEP));
+  btnForward.addEventListener("click", () => skipToSentence(currentIndex + SEEK_STEP));
+
+  // ---------------------------------------------------------------
+  // Media Session API：ロック画面／通知センターの再生コントロールと連携する。
+  // これにより、画面をロックしたりホーム画面に戻ったりしても、対応ブラウザ／OSでは
+  // 再生の継続や一時停止・前後の文への移動がしやすくなる（完全にブラウザを終了
+  // した場合はどのOS/ブラウザでも再生は止まる）。
+  // ---------------------------------------------------------------
+  const hasMediaSession = "mediaSession" in navigator;
+
+  function updateMediaSessionMetadata() {
+    if (!hasMediaSession) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: "しゃしん読み上げツール",
+      artist: `全${sentences.length}文`,
+      album: "写真の読み上げ"
+    });
+  }
+
+  function setMediaSessionState(state) {
+    if (!hasMediaSession) return;
+    navigator.mediaSession.playbackState = state;
+  }
+
+  if (hasMediaSession) {
+    navigator.mediaSession.setActionHandler("play", () => {
+      if (isPaused) togglePause();
+      else if (!isPlaying) startPlayback();
+    });
+    navigator.mediaSession.setActionHandler("pause", () => {
+      if (isPlaying && !isPaused) togglePause();
+    });
+    navigator.mediaSession.setActionHandler("stop", stopPlayback);
+    navigator.mediaSession.setActionHandler("previoustrack", () => skipToSentence(currentIndex - 1));
+    navigator.mediaSession.setActionHandler("nexttrack", () => skipToSentence(currentIndex + 1));
+  }
 
   window.addEventListener("beforeunload", () => {
     if (synth) synth.cancel();
   });
+
+  // ---------------------------------------------------------------
+  // 初期化
+  // ---------------------------------------------------------------
+  restoreSavedText();
 })();
 </script>
 
