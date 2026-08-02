@@ -237,6 +237,57 @@
   }
   .btn-block{ width:100%; }
 
+  /* 保存した文章一覧 */
+  .saved-list{
+    list-style:none;
+    margin:10px 0 0 0;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .saved-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    border:1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    padding:8px 10px;
+    background:#fff;
+  }
+  .saved-item-body{
+    flex:1;
+    min-width:0;
+  }
+  .saved-item-text{
+    font-size:0.82rem;
+    color: var(--color-text);
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .saved-item-meta{
+    font-size:0.7rem;
+    color: var(--color-text-soft);
+    margin-top:2px;
+  }
+  .saved-item-actions{
+    display:flex;
+    gap:6px;
+    flex-shrink:0;
+  }
+  .saved-item-actions button{
+    min-height:0;
+    padding:8px 10px;
+    font-size:0.78rem;
+    border-radius:6px;
+  }
+  .saved-list-empty{
+    font-size:0.8rem;
+    color: var(--color-text-soft);
+    margin-top:8px;
+  }
+
   .toggle-row{
     display:flex;
     align-items:flex-start;
@@ -457,7 +508,13 @@
     <p class="section-hint">読み取り結果です。読み上げる前に自由に修正できます。</p>
     <textarea id="extractedText" placeholder="ここに読み取った文章が表示されます。文章を直接貼り付けることもできます。"></textarea>
     <p class="textarea-placeholder-note">誤読があれば、ここで直してから読み上げてください。入力内容はこの端末に一時保存され、次回開いたときに復元されます。</p>
-    <button type="button" class="btn btn-ghost" id="btnClearSaved" style="margin-top:8px;">🗑️ 保存した文章を消去</button>
+    <button type="button" class="btn btn-ghost" id="btnClearSaved" style="margin-top:8px;">🗑️ 下書きを消去</button>
+
+    <div class="field-label" style="margin-top:18px;">保存した文章（最大10件）</div>
+    <p class="section-hint">今の文章を保存リストに追加しておくと、あとで呼び出せます。11件目を保存すると一番古いものから消えます。</p>
+    <button type="button" class="btn btn-outline btn-block" id="btnSaveSnapshot">📥 今の文章を保存リストに追加</button>
+    <ul class="saved-list" id="savedList"></ul>
+    <p class="saved-list-empty" id="savedListEmpty">まだ保存した文章はありません。</p>
   </section>
 
   <!-- ============================ 4. 読み上げ ============================ -->
@@ -531,6 +588,9 @@
 
   const extractedText = document.getElementById("extractedText");
   const btnClearSaved = document.getElementById("btnClearSaved");
+  const btnSaveSnapshot = document.getElementById("btnSaveSnapshot");
+  const savedList = document.getElementById("savedList");
+  const savedListEmpty = document.getElementById("savedListEmpty");
 
   const voiceSelect = document.getElementById("voiceSelect");
   const speedRange = document.getElementById("speedRange");
@@ -587,7 +647,120 @@
 
   btnClearSaved.addEventListener("click", () => {
     persistText("");
-    showOcrStatus("保存していた文章を消去しました。", "info");
+    showOcrStatus("下書きを消去しました。", "info");
+  });
+
+  // ---------------------------------------------------------------
+  // 保存した文章一覧（最大10件。この端末のブラウザにのみ保存される）
+  // ---------------------------------------------------------------
+  const SAVED_LIST_KEY = "photoReaderSavedList";
+  const MAX_SAVED_ITEMS = 10;
+
+  function generateSavedItemId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function loadSavedList() {
+    try {
+      const raw = localStorage.getItem(SAVED_LIST_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function writeSavedList(list) {
+    try {
+      localStorage.setItem(SAVED_LIST_KEY, JSON.stringify(list));
+    } catch (err) {
+      // 保存領域が使えない場合は何もしない
+    }
+  }
+
+  function formatSavedAt(timestamp) {
+    try {
+      return new Date(timestamp).toLocaleString("ja-JP", {
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    } catch (err) {
+      return "";
+    }
+  }
+
+  function renderSavedList() {
+    const list = loadSavedList();
+    savedList.innerHTML = "";
+    savedListEmpty.style.display = list.length ? "none" : "block";
+
+    list
+      .slice()
+      .reverse()
+      .forEach((item) => {
+        const li = document.createElement("li");
+        li.className = "saved-item";
+
+        const body = document.createElement("div");
+        body.className = "saved-item-body";
+
+        const text = document.createElement("div");
+        text.className = "saved-item-text";
+        text.textContent = item.text.length > 40 ? item.text.slice(0, 40) + "…" : item.text;
+        body.appendChild(text);
+
+        const meta = document.createElement("div");
+        meta.className = "saved-item-meta";
+        meta.textContent = formatSavedAt(item.savedAt);
+        body.appendChild(meta);
+
+        li.appendChild(body);
+
+        const actions = document.createElement("div");
+        actions.className = "saved-item-actions";
+
+        const loadBtn = document.createElement("button");
+        loadBtn.type = "button";
+        loadBtn.className = "btn btn-outline";
+        loadBtn.textContent = "読み込む";
+        loadBtn.addEventListener("click", () => {
+          setExtractedText(item.text);
+          showOcrStatus("保存した文章を読み込みました。", "info");
+        });
+        actions.appendChild(loadBtn);
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.className = "btn btn-ghost";
+        deleteBtn.textContent = "削除";
+        deleteBtn.addEventListener("click", () => {
+          writeSavedList(loadSavedList().filter((i) => i.id !== item.id));
+          renderSavedList();
+        });
+        actions.appendChild(deleteBtn);
+
+        li.appendChild(actions);
+        savedList.appendChild(li);
+      });
+  }
+
+  btnSaveSnapshot.addEventListener("click", () => {
+    const text = extractedText.value.trim();
+    if (!text) {
+      showOcrStatus("保存する文章がありません。", "error");
+      return;
+    }
+    const list = loadSavedList();
+    list.push({ id: generateSavedItemId(), text, savedAt: Date.now() });
+    while (list.length > MAX_SAVED_ITEMS) list.shift();
+    writeSavedList(list);
+    renderSavedList();
+    showOcrStatus("保存リストに追加しました。", "info");
   });
 
   let photos = []; // { id, file, url, rotation }
@@ -1161,6 +1334,7 @@
   // 初期化
   // ---------------------------------------------------------------
   restoreSavedText();
+  renderSavedList();
 })();
 </script>
 
