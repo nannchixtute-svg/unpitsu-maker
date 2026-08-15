@@ -536,6 +536,12 @@
   // ---------------------------------------------------------------
   // 1. 動画選択
   // ---------------------------------------------------------------
+  const LARGE_FILE_WARNING_BYTES = 300 * 1024 * 1024; // 300MB
+
+  function formatFileSize(bytes) {
+    return (bytes / (1024 * 1024)).toFixed(0) + "MB";
+  }
+
   function loadVideoFile(file) {
     if (!file || !file.type.startsWith("video/")) {
       showCaptureStatus("動画ファイルを選んでください。", "error");
@@ -544,7 +550,15 @@
     clearShots();
     videoFile = file;
     btnCapture.disabled = true;
-    showCaptureStatus("", "");
+
+    if (file.size > LARGE_FILE_WARNING_BYTES) {
+      showCaptureStatus(
+        `動画ファイルが大きいです（約${formatFileSize(file.size)}）。スマホのブラウザではメモリ不足で読み込みに失敗することがあります。うまくいかない場合は、動画を短く切り取ってから試してください。`,
+        "info"
+      );
+    } else {
+      showCaptureStatus("", "");
+    }
 
     const url = URL.createObjectURL(file);
     videoPreview.src = url;
@@ -558,7 +572,10 @@
       updateEstimate();
     };
     videoPreview.onerror = () => {
-      showCaptureStatus("動画の読み込みに失敗しました。別の動画でお試しください。", "error");
+      const sizeHint = file.size > LARGE_FILE_WARNING_BYTES
+        ? `ファイルサイズが大きい（約${formatFileSize(file.size)}）ことが原因の可能性が高いです。動画を短く切り取るか、書き出し画質を下げてから試してください。`
+        : "対応していない動画形式の可能性があります。別の動画でお試しください。";
+      showCaptureStatus(`動画の読み込みに失敗しました。${sizeHint}`, "error");
     };
   }
 
