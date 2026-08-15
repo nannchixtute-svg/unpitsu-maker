@@ -464,6 +464,8 @@
 <!-- JSZip（ZIP作成）／jsPDF（PDF作成）：いずれもクライアント側で動作するライブラリ -->
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<!-- MP4Box.js（mp4/mov動画のコンテナ解析）：大きい動画をメモリに載せず一部だけ読むために使用 -->
+<script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.js"></script>
 
 <script>
 (function () {
@@ -499,6 +501,7 @@
 
   let videoFile = null;
   let videoDuration = 0;
+  let previewLoadFailed = false; // <video>要素でのプレビュー読み込みに失敗した場合true（低メモリ抽出のみが使える）
   let shots = []; // { id, blobUrl, blob, timestamp, index }
   let shotIdSeq = 0;
   let isCapturing = false;
@@ -549,6 +552,7 @@
     }
     clearShots();
     videoFile = file;
+    previewLoadFailed = false;
     btnCapture.disabled = true;
 
     if (file.size > LARGE_FILE_WARNING_BYTES) {
@@ -564,18 +568,37 @@
     videoPreview.src = url;
     videoPreviewWrap.classList.add("visible");
 
+    let metadataResolved = false;
+
     videoPreview.onloadedmetadata = () => {
+      metadataResolved = true;
       videoDuration = videoPreview.duration;
       videoMeta.innerHTML =
         `<strong>${file.name}</strong>　動画の長さ：${formatTimestamp(videoDuration)}`;
       btnCapture.disabled = false;
       updateEstimate();
     };
-    videoPreview.onerror = () => {
-      const sizeHint = file.size > LARGE_FILE_WARNING_BYTES
-        ? `ファイルサイズが大きい（約${formatFileSize(file.size)}）ことが原因の可能性が高いです。動画を短く切り取るか、書き出し画質を下げてから試してください。`
-        : "対応していない動画形式の可能性があります。別の動画でお試しください。";
-      showCaptureStatus(`動画の読み込みに失敗しました。${sizeHint}`, "error");
+    videoPreview.onerror = async () => {
+      if (metadataResolved) return;
+      // <video>要素でのプレビュー読み込みに失敗した場合（大きい動画でメモリ不足に
+      // なった場合など）、動画の構造情報だけを読んで長さを取得できないか試す。
+      // これが成功すれば、プレビューは表示できなくても抽出自体は続行できる。
+      try {
+        videoDuration = await getDurationViaMp4Box(file);
+        metadataResolved = true;
+        previewLoadFailed = true;
+        videoPreviewWrap.classList.remove("visible");
+        videoMeta.innerHTML =
+          `<strong>${file.name}</strong>　動画の長さ：${formatTimestamp(videoDuration)}` +
+          `（プレビュー表示はできませんでしたが、抽出は続行できます）`;
+        btnCapture.disabled = false;
+        updateEstimate();
+      } catch (mp4boxErr) {
+        const sizeHint = file.size > LARGE_FILE_WARNING_BYTES
+          ? `ファイルサイズが大きい（約${formatFileSize(file.size)}）ことが原因の可能性が高いです。動画を短く切り取るか、書き出し画質を下げてから試してください。`
+          : "対応していない動画形式の可能性があります。別の動画でお試しください。";
+        showCaptureStatus(`動画の読み込みに失敗しました。${sizeHint}`, "error");
+      }
     };
   }
 
@@ -739,6 +762,174 @@
     updateShotSummary();
   }
 
+  // ---------------------------------------------------------------
+  // 大きい動画向けの低メモリ抽出（MP4Box.js + WebCodecs）
+  //
+  // 通常の<video>方式は動画ファイル全体をブラウザに読み込ませる必要があり、
+  // スマホでは大きい動画（数百MB〜）でメモリ不足になりやすい。
+  // ここでは動画ファイルの構造（moovボックス）だけを読み、そこに書かれた
+  // 各フレームの正確なファイル上の位置を頼りに、必要な範囲だけを
+  // file.slice()で直接読んでデコードする。動画ファイル全体を読み込むことはない。
+  //
+  // mp4/mov（ISOベースメディアファイル形式）以外や、対応していないコーデックの
+  // 場合は例外を投げ、呼び出し側が従来の<video>方式にフォールバックする。
+  // ---------------------------------------------------------------
+  const FAST_PATH_MIN_BYTES = 50 * 1024 * 1024; // 50MB未満は従来方式で十分なので試さない
+  const FAST_PATH_MAX_WINDOW_SAMPLES = 600; // 1フレーム分のデコードで読むサンプル数の上限（安全策）
+
+  function getCodecDescription(trak) {
+    const entry = trak.mdia.minf.stbl.stsd.entries[0];
+    const box = entry.avcC || entry.hvcC; // VP9/AV1は不要
+    if (!box) return null;
+    const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+    box.write(stream);
+    return new Uint8Array(stream.buffer, 8); // ボックスヘッダー（size+type）を除く
+  }
+
+  // ファイルの先頭（faststart）または末尾（moovが後ろにある一般的なmp4/mov）だけを
+  // 少量読み、moovボックス（動画の構造情報）を解析する。ファイル全体は読まない。
+  async function demuxMp4(file) {
+    if (typeof MP4Box === "undefined") {
+      throw new Error("この端末・ブラウザは動画構造の解析に対応していません");
+    }
+
+    const mp4boxfile = MP4Box.createFile();
+    let readyInfo = null;
+    mp4boxfile.onReady = (info) => { readyInfo = info; };
+    mp4boxfile.onError = () => { /* onReadyが呼ばれなければ下のチェックで例外にする */ };
+
+    const headChunk = Math.min(1 * 1024 * 1024, file.size);
+    const headBuf = await file.slice(0, headChunk).arrayBuffer();
+    headBuf.fileStart = 0;
+    mp4boxfile.appendBuffer(headBuf);
+
+    if (!readyInfo && file.size > headChunk) {
+      // moovが先頭になければ末尾にあると仮定して、末尾側も読む
+      const tailChunk = Math.min(8 * 1024 * 1024, file.size - headChunk);
+      const tailStart = file.size - tailChunk;
+      const tailBuf = await file.slice(tailStart, file.size).arrayBuffer();
+      tailBuf.fileStart = tailStart;
+      mp4boxfile.appendBuffer(tailBuf);
+    }
+
+    if (!readyInfo) {
+      throw new Error("動画ファイルの構造を解析できませんでした");
+    }
+
+    const videoTrackInfo = readyInfo.tracks.find((t) => t.video);
+    if (!videoTrackInfo) {
+      throw new Error("動画トラックが見つかりませんでした");
+    }
+
+    const trak = mp4boxfile.moov.traks.find((tr) => tr.tkhd.track_id === videoTrackInfo.id);
+    const samples = trak && trak.samples;
+    if (!samples || !samples.length) {
+      throw new Error("フレーム位置の情報を取得できませんでした");
+    }
+
+    return { readyInfo, videoTrackInfo, trak, samples };
+  }
+
+  // <video>要素でのプレビュー読み込みに失敗した大きい動画でも、
+  // 動画の構造情報だけから長さを取得できるようにするフォールバック。
+  async function getDurationViaMp4Box(file) {
+    const { videoTrackInfo } = await demuxMp4(file);
+    return videoTrackInfo.duration / videoTrackInfo.timescale;
+  }
+
+  async function tryFastExtract(file, timestamps, mimeType, onProgress) {
+    if (typeof VideoDecoder === "undefined" || typeof EncodedVideoChunk === "undefined") {
+      throw new Error("この端末・ブラウザは低メモリ抽出に対応していません");
+    }
+
+    const { videoTrackInfo, trak, samples } = await demuxMp4(file);
+
+    const description = getCodecDescription(trak);
+    const config = {
+      codec: videoTrackInfo.codec,
+      codedWidth: videoTrackInfo.video.width,
+      codedHeight: videoTrackInfo.video.height
+    };
+    if (description) config.description = description;
+
+    const support = await VideoDecoder.isConfigSupported(config);
+    if (!support.supported) {
+      throw new Error("この動画のコーデックには対応していません（" + videoTrackInfo.codec + "）");
+    }
+
+    const timescale = videoTrackInfo.timescale;
+    const results = [];
+    let searchIdx = 0; // タイムスタンプは昇順なので前方にしか進めない
+
+    for (let i = 0; i < timestamps.length; i++) {
+      const targetTs = Math.round(timestamps[i] * timescale);
+
+      while (searchIdx < samples.length - 1 && samples[searchIdx + 1].cts <= targetTs) searchIdx++;
+      let syncIdx = searchIdx;
+      while (syncIdx > 0 && !samples[syncIdx].is_sync) syncIdx--;
+
+      let endIdx = syncIdx;
+      while (
+        endIdx < samples.length - 1 &&
+        samples[endIdx].cts < targetTs &&
+        (endIdx - syncIdx) < FAST_PATH_MAX_WINDOW_SAMPLES
+      ) {
+        endIdx++;
+      }
+
+      const rangeStart = samples[syncIdx].offset;
+      const rangeEnd = samples[endIdx].offset + samples[endIdx].size;
+      const rangeBuf = await file.slice(rangeStart, rangeEnd).arrayBuffer();
+      const rangeView = new Uint8Array(rangeBuf);
+
+      const frames = [];
+      const decoder = new VideoDecoder({
+        output: (frame) => frames.push(frame),
+        error: () => { /* framesが空のまま進むので下でエラーにする */ }
+      });
+      decoder.configure(config);
+
+      for (let s = syncIdx; s <= endIdx; s++) {
+        const sample = samples[s];
+        const localStart = sample.offset - rangeStart;
+        const chunkData = rangeView.slice(localStart, localStart + sample.size);
+        decoder.decode(new EncodedVideoChunk({
+          type: sample.is_sync ? "key" : "delta",
+          timestamp: Math.round((sample.cts * 1e6) / timescale),
+          data: chunkData
+        }));
+      }
+      await decoder.flush();
+      decoder.close();
+
+      if (!frames.length) {
+        throw new Error("フレームのデコードに失敗しました");
+      }
+
+      const targetUs = Math.round(timestamps[i] * 1e6);
+      let best = frames[0];
+      let bestDiff = Infinity;
+      for (const f of frames) {
+        const diff = Math.abs(f.timestamp - targetUs);
+        if (diff < bestDiff) { bestDiff = diff; best = f; }
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = best.displayWidth;
+      canvas.height = best.displayHeight;
+      canvas.getContext("2d").drawImage(best, 0, 0);
+      frames.forEach((f) => f.close());
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, mimeType, 0.9));
+      if (!blob) throw new Error("画像への変換に失敗しました");
+
+      results.push({ timestamp: timestamps[i], blob });
+      onProgress(i + 1, timestamps.length);
+    }
+
+    return results;
+  }
+
   btnCapture.addEventListener("click", async () => {
     if (!videoFile || isCapturing) return;
 
@@ -760,8 +951,6 @@
     progressWrap.classList.add("visible");
     showCaptureStatus("", "");
 
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
     const mimeType = formatSelect.value === "png" ? "image/png" : "image/jpeg";
     const ext = formatSelect.value === "png" ? "png" : "jpg";
 
@@ -776,17 +965,40 @@
       wakeLock = null;
     }
 
-    // 一部のモバイルブラウザ（iOS Safariなど）は、動画を一度も再生していないと
-    // canvasへのフレーム描画が真っ黒になることがあるため、キャプチャ開始前に
-    // ごく短時間だけ再生してデコーダーを起動しておく。
-    try {
-      await videoPreview.play();
-      videoPreview.pause();
-    } catch (err) {
-      // 自動再生がブロックされた場合はそのまま続行する（改善されない可能性あり）
+    function updateProgress(done, total, prefix) {
+      const pct = Math.round((done / total) * 100);
+      progressLabel.textContent = `${prefix || "取得中…"} (${done}/${total})`;
+      progressPercent.textContent = pct + "%";
+      progressFill.style.width = pct + "%";
     }
 
-    try {
+    function commitFastResults(results) {
+      results.forEach((r) => {
+        const shot = {
+          id: ++shotIdSeq,
+          blob: r.blob,
+          blobUrl: URL.createObjectURL(r.blob),
+          timestamp: r.timestamp,
+          ext
+        };
+        shots.push(shot);
+        appendShotThumb(shot);
+      });
+    }
+
+    async function captureWithVideoElement() {
+      // 一部のモバイルブラウザ（iOS Safariなど）は、動画を一度も再生していないと
+      // canvasへのフレーム描画が真っ黒になることがあるため、キャプチャ開始前に
+      // ごく短時間だけ再生してデコーダーを起動しておく。
+      try {
+        await videoPreview.play();
+        videoPreview.pause();
+      } catch (err) {
+        // 自動再生がブロックされた場合はそのまま続行する（改善されない可能性あり）
+      }
+
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
       for (let i = 0; i < timestamps.length; i++) {
         const t = timestamps[i];
         await seekTo(videoPreview, t);
@@ -807,11 +1019,37 @@
           shots.push(shot);
           appendShotThumb(shot);
         }
+        updateProgress(i + 1, timestamps.length);
+      }
+    }
 
-        const pct = Math.round(((i + 1) / timestamps.length) * 100);
-        progressLabel.textContent = `取得中… (${i + 1}/${timestamps.length})`;
-        progressPercent.textContent = pct + "%";
-        progressFill.style.width = pct + "%";
+    try {
+      if (previewLoadFailed) {
+        // <video>要素でのプレビュー読み込みに失敗した動画（大きすぎる等）は、
+        // 低メモリ抽出（MP4Box + WebCodecs）でしか処理できない。
+        const results = await tryFastExtract(
+          videoFile, timestamps, mimeType,
+          (done, total) => updateProgress(done, total, "取得中…（低メモリモード）")
+        );
+        commitFastResults(results);
+      } else {
+        let usedFastPath = false;
+        if (videoFile.size > FAST_PATH_MIN_BYTES) {
+          try {
+            const results = await tryFastExtract(
+              videoFile, timestamps, mimeType,
+              (done, total) => updateProgress(done, total, "取得中…（低メモリモード）")
+            );
+            commitFastResults(results);
+            usedFastPath = true;
+          } catch (fastErr) {
+            // 低メモリ抽出に失敗した場合は、通常の<video>方式で最初からやり直す
+            clearShots();
+          }
+        }
+        if (!usedFastPath) {
+          await captureWithVideoElement();
+        }
       }
       showCaptureStatus(`${shots.length}枚のスクリーンショットを取得しました。`, "info");
     } catch (err) {
