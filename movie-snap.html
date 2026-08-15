@@ -666,47 +666,60 @@
     renderShotGrid();
   }
 
-  function renderShotGrid() {
-    shotGrid.innerHTML = "";
-    shots.forEach((shot, i) => {
-      const thumb = document.createElement("div");
-      thumb.className = "shot-thumb";
+  function buildShotThumb(shot, index) {
+    const thumb = document.createElement("div");
+    thumb.className = "shot-thumb";
 
-      const img = document.createElement("img");
-      img.src = shot.blobUrl;
-      img.alt = `シーン${i + 1}のスクリーンショット`;
-      thumb.appendChild(img);
+    const img = document.createElement("img");
+    img.src = shot.blobUrl;
+    img.alt = `シーン${index + 1}のスクリーンショット`;
+    thumb.appendChild(img);
 
-      const order = document.createElement("span");
-      order.className = "shot-order";
-      order.textContent = String(i + 1);
-      thumb.appendChild(order);
+    const order = document.createElement("span");
+    order.className = "shot-order";
+    order.textContent = String(index + 1);
+    thumb.appendChild(order);
 
-      const removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "shot-remove";
-      removeBtn.title = "このスクリーンショットを削除";
-      removeBtn.setAttribute("aria-label", "このスクリーンショットを削除");
-      removeBtn.textContent = "×";
-      removeBtn.addEventListener("click", () => {
-        URL.revokeObjectURL(shot.blobUrl);
-        shots = shots.filter((s) => s.id !== shot.id);
-        renderShotGrid();
-      });
-      thumb.appendChild(removeBtn);
-
-      const caption = document.createElement("div");
-      caption.className = "shot-timestamp";
-      caption.textContent = formatTimestamp(shot.timestamp);
-      thumb.appendChild(caption);
-
-      shotGrid.appendChild(thumb);
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "shot-remove";
+    removeBtn.title = "このスクリーンショットを削除";
+    removeBtn.setAttribute("aria-label", "このスクリーンショットを削除");
+    removeBtn.textContent = "×";
+    removeBtn.addEventListener("click", () => {
+      URL.revokeObjectURL(shot.blobUrl);
+      shots = shots.filter((s) => s.id !== shot.id);
+      renderShotGrid();
     });
+    thumb.appendChild(removeBtn);
 
+    const caption = document.createElement("div");
+    caption.className = "shot-timestamp";
+    caption.textContent = formatTimestamp(shot.timestamp);
+    thumb.appendChild(caption);
+
+    return thumb;
+  }
+
+  function updateShotSummary() {
     shotCountHint.textContent = shots.length ? `${shots.length}枚のスクリーンショット` : "";
     const hasShots = shots.length > 0;
     btnDownloadZip.disabled = !hasShots;
     btnDownloadPdf.disabled = !hasShots;
+  }
+
+  // 一覧全体を作り直す（削除操作や全消去のときだけ使う。番号が振り直しになるため）
+  function renderShotGrid() {
+    shotGrid.innerHTML = "";
+    shots.forEach((shot, i) => shotGrid.appendChild(buildShotThumb(shot, i)));
+    updateShotSummary();
+  }
+
+  // 撮影中は1件ずつ末尾に追加するだけにして、既存のサムネイルを作り直さない
+  // （全部作り直すと枚数の2乗で遅くなるため）
+  function appendShotThumb(shot) {
+    shotGrid.appendChild(buildShotThumb(shot, shots.length - 1));
+    updateShotSummary();
   }
 
   btnCapture.addEventListener("click", async () => {
@@ -767,20 +780,21 @@
 
         const blob = await new Promise((resolve) => canvas.toBlob(resolve, mimeType, 0.9));
         if (blob) {
-          shots.push({
+          const shot = {
             id: ++shotIdSeq,
             blob,
             blobUrl: URL.createObjectURL(blob),
             timestamp: t,
             ext
-          });
+          };
+          shots.push(shot);
+          appendShotThumb(shot);
         }
 
         const pct = Math.round(((i + 1) / timestamps.length) * 100);
         progressLabel.textContent = `取得中… (${i + 1}/${timestamps.length})`;
         progressPercent.textContent = pct + "%";
         progressFill.style.width = pct + "%";
-        renderShotGrid();
       }
       showCaptureStatus(`${shots.length}枚のスクリーンショットを取得しました。`, "info");
     } catch (err) {
