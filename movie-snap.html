@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>どうがスクショツール | 動画スクリーンショット自動抽出</title>
+
+<!-- ============================================================ -->
+<!-- STYLE: CSS                                                    -->
+<!-- ============================================================ -->
+<style>
+  :root{
+    --color-bg: #F8F8FB;
+    --color-panel: #ffffff;
+    --color-border: #CCCCCC;
+    --color-border-soft: #E3E3E6;
+    --color-text: #1A1A1A;
+    --color-text-soft: #767676;
+    --color-primary: #0017C1;
+    --color-primary-strong: #000E86;
+    --color-primary-soft: #E8F1FE;
+    --color-accent: #FB5B01;
+    --color-accent-soft: #FFEEE2;
+    --color-accent-text: #7A2E00;
+    --color-mint: #E6F5EC;
+    --color-mint-text: #115A36;
+    --color-danger: #CE0000;
+    --focus-ring: #0017C1;
+    --radius-lg: 14px;
+    --radius-md: 8px;
+    --tap-min: 48px;
+    font-size: 17px;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    margin:0;
+    padding:0;
+    min-height:100%;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "Meiryo", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.7;
+  }
+
+  h1, h2{ margin: 0 0 8px 0; }
+
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible{
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  .page{
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px 16px 64px;
+  }
+
+  .app-title{
+    font-size: 1.5rem;
+    color: var(--color-primary);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .app-title .emoji{ font-size:1.7rem; }
+  .app-subtitle{
+    font-size: 0.9rem;
+    color: var(--color-text-soft);
+    margin-bottom: 20px;
+  }
+
+  .panel-section{
+    background: var(--color-panel);
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-lg);
+    padding: 18px;
+    margin-bottom: 18px;
+  }
+  .panel-section h2{
+    font-size: 1.05rem;
+    color: var(--color-primary);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .panel-section h2 .badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:26px; height:26px;
+    border-radius:50%;
+    background: var(--color-primary);
+    color:#fff;
+    font-size:0.8rem;
+    flex-shrink:0;
+  }
+  .section-hint{
+    font-size: 0.82rem;
+    color: var(--color-text-soft);
+    margin: 0 0 12px 0;
+  }
+
+  /* 動画選択エリア */
+  .drop-zone{
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 24px 16px;
+    text-align:center;
+    cursor:pointer;
+    background: var(--color-bg);
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .drop-zone.dragover{
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+  }
+  .drop-zone .dz-icon{ font-size: 2.2rem; display:block; margin-bottom:6px; }
+  .drop-zone .dz-text{ font-weight:700; color: var(--color-text); }
+  .drop-zone .dz-sub{ font-size:0.78rem; color: var(--color-text-soft); margin-top:4px; }
+  .file-input-visually-hidden{
+    position:absolute;
+    width:1px; height:1px;
+    overflow:hidden;
+    clip:rect(0 0 0 0);
+  }
+
+  .video-preview{
+    margin-top:14px;
+    display:none;
+  }
+  .video-preview.visible{ display:block; }
+  .video-preview video{
+    width:100%;
+    max-height:260px;
+    border-radius: var(--radius-md);
+    background:#000;
+    display:block;
+  }
+  .video-meta{
+    font-size:0.82rem;
+    color: var(--color-text-soft);
+    margin-top:8px;
+  }
+  .video-meta strong{ color: var(--color-text); }
+
+  /* 間隔プリセット */
+  .interval-presets{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:4px;
+  }
+  .preset-btn{
+    flex:1;
+    min-width:64px;
+    min-height:44px;
+    border-radius: var(--radius-md);
+    border: 2px solid var(--color-border);
+    background:#fff;
+    color: var(--color-text);
+    font-weight:700;
+    font-size:0.88rem;
+    cursor:pointer;
+  }
+  .preset-btn.active{
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
+  }
+
+  .field-label{
+    font-size:0.9rem;
+    font-weight:700;
+    color: var(--color-text-soft);
+    margin: 14px 0 8px 0;
+  }
+  .custom-interval-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .custom-interval-row input[type="number"]{
+    width:100px;
+    min-height: var(--tap-min);
+    font-size:1rem;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    border: 2px solid var(--color-border);
+    font-family: inherit;
+  }
+  .custom-interval-row span{ font-size:0.9rem; color: var(--color-text-soft); }
+
+  .format-select{
+    min-height: var(--tap-min);
+    font-size:0.95rem;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    border: 2px solid var(--color-border);
+    font-family: inherit;
+    background:#fff;
+  }
+
+  .estimate-note{
+    font-size:0.85rem;
+    color: var(--color-primary);
+    font-weight:700;
+    margin-top:12px;
+    padding:10px 12px;
+    background: var(--color-primary-soft);
+    border-radius: var(--radius-md);
+  }
+  .estimate-note.warning{
+    color: var(--color-accent-text);
+    background: var(--color-accent-soft);
+  }
+
+  /* Buttons */
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    min-height: var(--tap-min);
+    padding: 12px 18px;
+    border-radius: var(--radius-md);
+    border: 2px solid transparent;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.08s ease, filter 0.15s ease, opacity 0.15s ease;
+    font-family: inherit;
+  }
+  .btn:active{ transform: scale(0.97); }
+  .btn:disabled{ opacity:0.45; cursor:not-allowed; transform:none; }
+  .btn-primary{
+    background: var(--color-primary);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled){ background: var(--color-primary-strong); }
+  .btn-accent{
+    background: var(--color-accent);
+    color: #fff;
+  }
+  .btn-outline{
+    background: #fff;
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+  }
+  .btn-outline:hover:not(:disabled){ background: var(--color-primary-soft); }
+  .btn-ghost{
+    background: #fff;
+    color: var(--color-text-soft);
+    border-color: var(--color-border);
+  }
+  .btn-block{ width:100%; }
+
+  .action-row{
+    display:flex;
+    gap:10px;
+    margin-top:14px;
+    flex-wrap:wrap;
+  }
+  .action-row .btn{ flex:1; min-width:150px; }
+
+  /* 進捗バー */
+  .progress-wrap{
+    margin-top:14px;
+    display:none;
+  }
+  .progress-wrap.visible{ display:block; }
+  .progress-label{
+    font-size:0.82rem;
+    color: var(--color-primary);
+    font-weight:700;
+    margin-bottom:6px;
+    display:flex;
+    justify-content:space-between;
+  }
+  .progress-track{
+    width:100%;
+    height:14px;
+    background: var(--color-border-soft);
+    border-radius:999px;
+    overflow:hidden;
+  }
+  .progress-fill{
+    height:100%;
+    width:0%;
+    background: var(--color-primary);
+    border-radius:999px;
+    transition: width 0.2s ease;
+  }
+
+  /* 抽出結果のギャラリー */
+  .shot-grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap:10px;
+    margin-top:14px;
+  }
+  .shot-thumb{
+    position:relative;
+    border-radius: var(--radius-md);
+    overflow:hidden;
+    border: 1px solid var(--color-border-soft);
+    background:#000;
+  }
+  .shot-thumb img{
+    width:100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    display:block;
+  }
+  .shot-thumb .shot-order{
+    position:absolute;
+    top:4px; left:4px;
+    background: rgba(0,0,0,0.6);
+    color:#fff;
+    font-size:0.7rem;
+    font-weight:700;
+    padding:1px 7px;
+    border-radius:999px;
+  }
+  .shot-thumb .shot-remove{
+    position:absolute;
+    top:4px; right:4px;
+    width:26px; height:26px;
+    min-height:0;
+    padding:0;
+    border-radius:50%;
+    border:none;
+    background: rgba(255,255,255,0.92);
+    color: var(--color-danger);
+    font-size:0.95rem;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+  }
+  .shot-timestamp{
+    background: rgba(0,0,0,0.7);
+    color:#fff;
+    font-size:0.72rem;
+    text-align:center;
+    padding:3px 4px;
+  }
+  .shot-count-hint{
+    font-size:0.8rem;
+    color: var(--color-text-soft);
+    margin-top:8px;
+  }
+
+  .status-msg{
+    font-size:0.85rem;
+    margin-top:10px;
+    min-height:1.2em;
+  }
+  .status-msg.error{ color: var(--color-danger); font-weight:700; }
+  .status-msg.info{ color: var(--color-mint-text); font-weight:700; }
+
+  .footer-note{
+    font-size:0.75rem;
+    color: var(--color-text-soft);
+    text-align:center;
+    margin-top: 8px;
+  }
+
+  @media screen and (max-width: 480px){
+    :root{ font-size: 15px; }
+    .page{ padding: 16px 10px 48px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1 class="app-title"><span class="emoji">🎬</span>どうがスクショツール</h1>
+  <p class="app-subtitle">動画をアップロードして間隔を決めるだけで、自動でスクリーンショットを撮影します</p>
+
+  <!-- ============================ 1. 動画を選ぶ ============================ -->
+  <section class="panel-section">
+    <h2><span class="badge">1</span>動画をえらぶ</h2>
+    <p class="section-hint">パソコンやスマホの中にある動画ファイル（mp4, mov など）を選んでください。</p>
+
+    <div class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="動画をドラッグ＆ドロップ、またはタップして選択">
+      <span class="dz-icon" aria-hidden="true">🎞️</span>
+      <span class="dz-text">ここに動画をドラッグ＆ドロップ<br>またはタップして選択</span>
+      <span class="dz-sub">MP4 / MOV などの動画ファイル</span>
+    </div>
+    <input type="file" id="fileInput" class="file-input-visually-hidden" accept="video/*">
+
+    <div class="video-preview" id="videoPreviewWrap">
+      <video id="videoPreview" controls playsinline muted></video>
+      <p class="video-meta" id="videoMeta"></p>
+    </div>
+  </section>
+
+  <!-- ============================ 2. 間隔を決める ============================ -->
+  <section class="panel-section">
+    <h2><span class="badge">2</span>間隔を決める</h2>
+    <p class="section-hint">何秒おきにスクリーンショットを撮るか決めてください。</p>
+
+    <div class="interval-presets" id="intervalPresets">
+      <button type="button" class="preset-btn" data-interval="1">1秒</button>
+      <button type="button" class="preset-btn active" data-interval="5">5秒</button>
+      <button type="button" class="preset-btn" data-interval="10">10秒</button>
+      <button type="button" class="preset-btn" data-interval="30">30秒</button>
+    </div>
+
+    <div class="field-label">自由に入力する場合（秒）</div>
+    <div class="custom-interval-row">
+      <input type="number" id="customInterval" min="0.5" step="0.5" value="5">
+      <span>秒おき</span>
+    </div>
+
+    <div class="field-label">画像の形式</div>
+    <select class="format-select" id="formatSelect">
+      <option value="jpeg" selected>JPEG（ファイルが軽い）</option>
+      <option value="png">PNG（画質重視）</option>
+    </select>
+
+    <p class="estimate-note" id="estimateNote" style="display:none;"></p>
+  </section>
+
+  <!-- ============================ 3. 自動取得 ============================ -->
+  <section class="panel-section">
+    <h2><span class="badge">3</span>スクリーンショットを取得</h2>
+
+    <button type="button" class="btn btn-primary btn-block" id="btnCapture" disabled>📸 自動でスクリーンショットを撮る</button>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-label">
+        <span id="progressLabel">取得中…</span>
+        <span id="progressPercent">0%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+
+    <p class="status-msg" id="captureStatus"></p>
+
+    <div class="shot-grid" id="shotGrid"></div>
+    <p class="shot-count-hint" id="shotCountHint"></p>
+  </section>
+
+  <!-- ============================ 4. ダウンロード ============================ -->
+  <section class="panel-section">
+    <h2><span class="badge">4</span>ダウンロード</h2>
+    <p class="section-hint">取得したスクリーンショットをまとめてダウンロードします。いらないものは上の一覧の「×」で削除してから保存できます。</p>
+
+    <div class="action-row">
+      <button type="button" class="btn btn-outline" id="btnDownloadZip" disabled>📦 ZIPでダウンロード</button>
+      <button type="button" class="btn btn-outline" id="btnDownloadPdf" disabled>📄 PDFでダウンロード</button>
+    </div>
+
+    <p class="status-msg" id="downloadStatus"></p>
+  </section>
+
+  <p class="footer-note">動画の読み込みとスクリーンショットの作成は、すべてこの端末（ブラウザ）内で処理されます。動画がサーバーに送信されることはありません。</p>
+</div>
+
+<!-- JSZip（ZIP作成）／jsPDF（PDF作成）：いずれもクライアント側で動作するライブラリ -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+<script>
+(function () {
+  "use strict";
+
+  const dropZone = document.getElementById("dropZone");
+  const fileInput = document.getElementById("fileInput");
+  const videoPreviewWrap = document.getElementById("videoPreviewWrap");
+  const videoPreview = document.getElementById("videoPreview");
+  const videoMeta = document.getElementById("videoMeta");
+
+  const intervalPresets = document.getElementById("intervalPresets");
+  const customInterval = document.getElementById("customInterval");
+  const formatSelect = document.getElementById("formatSelect");
+  const estimateNote = document.getElementById("estimateNote");
+
+  const btnCapture = document.getElementById("btnCapture");
+  const progressWrap = document.getElementById("progressWrap");
+  const progressLabel = document.getElementById("progressLabel");
+  const progressPercent = document.getElementById("progressPercent");
+  const progressFill = document.getElementById("progressFill");
+  const captureStatus = document.getElementById("captureStatus");
+
+  const shotGrid = document.getElementById("shotGrid");
+  const shotCountHint = document.getElementById("shotCountHint");
+
+  const btnDownloadZip = document.getElementById("btnDownloadZip");
+  const btnDownloadPdf = document.getElementById("btnDownloadPdf");
+  const downloadStatus = document.getElementById("downloadStatus");
+
+  const WARNING_FRAME_COUNT = 150; // これを超える枚数になりそうなら警告を出す
+  const MAX_FRAME_COUNT = 500; // これを超える枚数は取得しない（ブラウザが固まるのを防ぐ）
+
+  let videoFile = null;
+  let videoDuration = 0;
+  let shots = []; // { id, blobUrl, blob, timestamp, index }
+  let shotIdSeq = 0;
+  let isCapturing = false;
+
+  // ---------------------------------------------------------------
+  // ユーティリティ
+  // ---------------------------------------------------------------
+  function formatTimestamp(seconds) {
+    const total = Math.round(seconds);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
+  }
+
+  function formatTimestampForFilename(seconds) {
+    return formatTimestamp(seconds).replace(/:/g, "-");
+  }
+
+  function showCaptureStatus(text, kind) {
+    captureStatus.textContent = text;
+    captureStatus.className = "status-msg" + (kind ? " " + kind : "");
+  }
+
+  function showDownloadStatus(text, kind) {
+    downloadStatus.textContent = text;
+    downloadStatus.className = "status-msg" + (kind ? " " + kind : "");
+  }
+
+  function getSelectedInterval() {
+    const value = parseFloat(customInterval.value);
+    return value > 0 ? value : 5;
+  }
+
+  // ---------------------------------------------------------------
+  // 1. 動画選択
+  // ---------------------------------------------------------------
+  function loadVideoFile(file) {
+    if (!file || !file.type.startsWith("video/")) {
+      showCaptureStatus("動画ファイルを選んでください。", "error");
+      return;
+    }
+    clearShots();
+    videoFile = file;
+    btnCapture.disabled = true;
+    showCaptureStatus("", "");
+
+    const url = URL.createObjectURL(file);
+    videoPreview.src = url;
+    videoPreviewWrap.classList.add("visible");
+
+    videoPreview.onloadedmetadata = () => {
+      videoDuration = videoPreview.duration;
+      videoMeta.innerHTML =
+        `<strong>${file.name}</strong>　動画の長さ：${formatTimestamp(videoDuration)}`;
+      btnCapture.disabled = false;
+      updateEstimate();
+    };
+    videoPreview.onerror = () => {
+      showCaptureStatus("動画の読み込みに失敗しました。別の動画でお試しください。", "error");
+    };
+  }
+
+  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  dropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropZone.classList.add("dragover");
+  });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("dragover");
+    if (e.dataTransfer.files && e.dataTransfer.files.length) {
+      loadVideoFile(e.dataTransfer.files[0]);
+    }
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files && fileInput.files.length) loadVideoFile(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  // ---------------------------------------------------------------
+  // 2. 間隔設定
+  // ---------------------------------------------------------------
+  intervalPresets.addEventListener("click", (e) => {
+    const btn = e.target.closest(".preset-btn");
+    if (!btn) return;
+    Array.from(intervalPresets.children).forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    customInterval.value = btn.dataset.interval;
+    updateEstimate();
+  });
+
+  customInterval.addEventListener("input", () => {
+    Array.from(intervalPresets.children).forEach((b) => {
+      b.classList.toggle("active", b.dataset.interval === customInterval.value);
+    });
+    updateEstimate();
+  });
+
+  function updateEstimate() {
+    if (!videoDuration) {
+      estimateNote.style.display = "none";
+      return;
+    }
+    const interval = getSelectedInterval();
+    const count = Math.max(1, Math.floor(videoDuration / interval) + 1);
+    estimateNote.style.display = "block";
+    if (count > WARNING_FRAME_COUNT) {
+      estimateNote.className = "estimate-note warning";
+      estimateNote.textContent =
+        `約${count}枚のスクリーンショットを取得します。枚数が多いと処理に時間がかかります。間隔を長くすることをおすすめします。`;
+    } else {
+      estimateNote.className = "estimate-note";
+      estimateNote.textContent = `約${count}枚のスクリーンショットを取得します。`;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // 3. フレーム取得
+  // ---------------------------------------------------------------
+  function seekTo(video, time) {
+    return new Promise((resolve) => {
+      function onSeeked() {
+        video.removeEventListener("seeked", onSeeked);
+        resolve();
+      }
+      video.addEventListener("seeked", onSeeked);
+      video.currentTime = time;
+    });
+  }
+
+  function clearShots() {
+    shots.forEach((s) => URL.revokeObjectURL(s.blobUrl));
+    shots = [];
+    renderShotGrid();
+  }
+
+  function renderShotGrid() {
+    shotGrid.innerHTML = "";
+    shots.forEach((shot, i) => {
+      const thumb = document.createElement("div");
+      thumb.className = "shot-thumb";
+
+      const img = document.createElement("img");
+      img.src = shot.blobUrl;
+      img.alt = `シーン${i + 1}のスクリーンショット`;
+      thumb.appendChild(img);
+
+      const order = document.createElement("span");
+      order.className = "shot-order";
+      order.textContent = String(i + 1);
+      thumb.appendChild(order);
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "shot-remove";
+      removeBtn.title = "このスクリーンショットを削除";
+      removeBtn.setAttribute("aria-label", "このスクリーンショットを削除");
+      removeBtn.textContent = "×";
+      removeBtn.addEventListener("click", () => {
+        URL.revokeObjectURL(shot.blobUrl);
+        shots = shots.filter((s) => s.id !== shot.id);
+        renderShotGrid();
+      });
+      thumb.appendChild(removeBtn);
+
+      const caption = document.createElement("div");
+      caption.className = "shot-timestamp";
+      caption.textContent = formatTimestamp(shot.timestamp);
+      thumb.appendChild(caption);
+
+      shotGrid.appendChild(thumb);
+    });
+
+    shotCountHint.textContent = shots.length ? `${shots.length}枚のスクリーンショット` : "";
+    const hasShots = shots.length > 0;
+    btnDownloadZip.disabled = !hasShots;
+    btnDownloadPdf.disabled = !hasShots;
+  }
+
+  btnCapture.addEventListener("click", async () => {
+    if (!videoFile || isCapturing) return;
+
+    const interval = getSelectedInterval();
+    const timestamps = [];
+    for (let t = 0; t < videoDuration; t += interval) timestamps.push(t);
+    if (!timestamps.length) timestamps.push(0);
+    if (timestamps.length > MAX_FRAME_COUNT) {
+      showCaptureStatus(
+        `枚数が多すぎます（約${timestamps.length}枚）。間隔を長くしてからもう一度お試しください。`,
+        "error"
+      );
+      return;
+    }
+
+    isCapturing = true;
+    btnCapture.disabled = true;
+    clearShots();
+    progressWrap.classList.add("visible");
+    showCaptureStatus("", "");
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const mimeType = formatSelect.value === "png" ? "image/png" : "image/jpeg";
+    const ext = formatSelect.value === "png" ? "png" : "jpg";
+
+    try {
+      for (let i = 0; i < timestamps.length; i++) {
+        const t = timestamps[i];
+        await seekTo(videoPreview, t);
+
+        canvas.width = videoPreview.videoWidth;
+        canvas.height = videoPreview.videoHeight;
+        ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
+
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, mimeType, 0.9));
+        if (blob) {
+          shots.push({
+            id: ++shotIdSeq,
+            blob,
+            blobUrl: URL.createObjectURL(blob),
+            timestamp: t,
+            ext
+          });
+        }
+
+        const pct = Math.round(((i + 1) / timestamps.length) * 100);
+        progressLabel.textContent = `取得中… (${i + 1}/${timestamps.length})`;
+        progressPercent.textContent = pct + "%";
+        progressFill.style.width = pct + "%";
+        renderShotGrid();
+      }
+      showCaptureStatus(`${shots.length}枚のスクリーンショットを取得しました。`, "info");
+    } catch (err) {
+      showCaptureStatus("取得中にエラーが発生しました：" + (err && err.message ? err.message : err), "error");
+    } finally {
+      isCapturing = false;
+      btnCapture.disabled = false;
+      progressWrap.classList.remove("visible");
+    }
+  });
+
+  // ---------------------------------------------------------------
+  // 4. ダウンロード（ZIP / PDF）
+  // ---------------------------------------------------------------
+  function shotFileName(shot, index) {
+    const seq = String(index + 1).padStart(3, "0");
+    return `scene_${seq}_${formatTimestampForFilename(shot.timestamp)}.${shot.ext}`;
+  }
+
+  btnDownloadZip.addEventListener("click", async () => {
+    if (!shots.length) return;
+    if (typeof JSZip === "undefined") {
+      showDownloadStatus("ZIP作成用のライブラリを読み込めませんでした。インターネット接続を確認してもう一度お試しください。", "error");
+      return;
+    }
+    btnDownloadZip.disabled = true;
+    showDownloadStatus("ZIPを作成中…", "info");
+    try {
+      const zip = new JSZip();
+      shots.forEach((shot, i) => {
+        zip.file(shotFileName(shot, i), shot.blob);
+      });
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "movie-snap.zip";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showDownloadStatus("ZIPをダウンロードしました。", "info");
+    } catch (err) {
+      showDownloadStatus("ZIP作成中にエラーが発生しました：" + (err && err.message ? err.message : err), "error");
+    } finally {
+      btnDownloadZip.disabled = shots.length === 0;
+    }
+  });
+
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("画像の変換に失敗しました"));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  btnDownloadPdf.addEventListener("click", async () => {
+    if (!shots.length) return;
+    if (typeof window.jspdf === "undefined") {
+      showDownloadStatus("PDF作成用のライブラリを読み込めませんでした。インターネット接続を確認してもう一度お試しください。", "error");
+      return;
+    }
+    btnDownloadPdf.disabled = true;
+    showDownloadStatus("PDFを作成中…", "info");
+    try {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 15;
+
+      doc.setFontSize(16);
+      doc.text("シーン抽出結果", margin, margin);
+      doc.setFontSize(10);
+      doc.text(`元動画: ${videoFile ? videoFile.name : ""}`, margin, margin + 8);
+      doc.text(`取得枚数: ${shots.length}`, margin, margin + 14);
+
+      for (let i = 0; i < shots.length; i++) {
+        const shot = shots[i];
+        const dataUrl = await blobToDataUrl(shot.blob);
+        const imgFormat = shot.ext === "png" ? "PNG" : "JPEG";
+
+        const dims = await new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve({ w: img.width, h: img.height });
+          img.src = dataUrl;
+        });
+
+        doc.addPage();
+        const areaWidth = pageWidth - margin * 2;
+        const areaHeight = pageHeight - margin * 2 - 12;
+        const scale = Math.min(areaWidth / dims.w, areaHeight / dims.h);
+        const drawW = dims.w * scale;
+        const drawH = dims.h * scale;
+        const x = margin + (areaWidth - drawW) / 2;
+        const y = margin + (areaHeight - drawH) / 2;
+
+        doc.addImage(dataUrl, imgFormat, x, y, drawW, drawH);
+        doc.setFontSize(11);
+        doc.text(
+          `シーン ${String(i + 1).padStart(3, "0")}　/　${formatTimestamp(shot.timestamp)}`,
+          pageWidth / 2,
+          pageHeight - margin + 4,
+          { align: "center" }
+        );
+      }
+
+      doc.save("movie-snap.pdf");
+      showDownloadStatus("PDFをダウンロードしました。", "info");
+    } catch (err) {
+      showDownloadStatus("PDF作成中にエラーが発生しました：" + (err && err.message ? err.message : err), "error");
+    } finally {
+      btnDownloadPdf.disabled = shots.length === 0;
+    }
+  });
+
+  renderShotGrid();
+})();
+</script>
+
+</body>
+</html>
