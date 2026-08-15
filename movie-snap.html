@@ -628,11 +628,34 @@
   // ---------------------------------------------------------------
   function seekTo(video, time) {
     return new Promise((resolve) => {
-      function onSeeked() {
+      const SEEK_TIMEOUT_MS = 4000;
+      let settled = false;
+
+      function finish() {
+        if (settled) return;
+        settled = true;
         video.removeEventListener("seeked", onSeeked);
+        clearTimeout(timer);
         resolve();
       }
+
+      // "seeked"が発火した直後は、まだ新しいフレームが描画されていないことがあるため、
+      // 2回のrequestAnimationFrameを挟んでから確定させる。
+      function onSeeked() {
+        requestAnimationFrame(() => requestAnimationFrame(finish));
+      }
+
       video.addEventListener("seeked", onSeeked);
+      // "seeked"イベントが発火しない場合（一部のモバイルブラウザでの既知の挙動）に
+      // 処理が永久に止まらないよう、タイムアウトで必ず先に進める。
+      const timer = setTimeout(finish, SEEK_TIMEOUT_MS);
+
+      if (Math.abs(video.currentTime - time) < 0.03) {
+        // すでにほぼ同じ位置にいる場合、一部のブラウザ（iOS Safariなど）は
+        // currentTimeを設定しても"seeked"を発火しないため、即座に確定させる。
+        finish();
+        return;
+      }
       video.currentTime = time;
     });
   }
