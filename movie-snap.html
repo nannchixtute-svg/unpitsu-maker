@@ -735,6 +735,27 @@
     const mimeType = formatSelect.value === "png" ? "image/png" : "image/jpeg";
     const ext = formatSelect.value === "png" ? "png" : "jpg";
 
+    // 処理中に画面が自動でロックされてキャプチャが止まってしまうのを防ぐ
+    // （対応ブラウザのみ。非対応でもエラーにはしない）
+    let wakeLock = null;
+    try {
+      if ("wakeLock" in navigator) {
+        wakeLock = await navigator.wakeLock.request("screen");
+      }
+    } catch (err) {
+      wakeLock = null;
+    }
+
+    // 一部のモバイルブラウザ（iOS Safariなど）は、動画を一度も再生していないと
+    // canvasへのフレーム描画が真っ黒になることがあるため、キャプチャ開始前に
+    // ごく短時間だけ再生してデコーダーを起動しておく。
+    try {
+      await videoPreview.play();
+      videoPreview.pause();
+    } catch (err) {
+      // 自動再生がブロックされた場合はそのまま続行する（改善されない可能性あり）
+    }
+
     try {
       for (let i = 0; i < timestamps.length; i++) {
         const t = timestamps[i];
@@ -768,6 +789,9 @@
       isCapturing = false;
       btnCapture.disabled = false;
       progressWrap.classList.remove("visible");
+      if (wakeLock) {
+        try { await wakeLock.release(); } catch (err) { /* 何もしない */ }
+      }
     }
   });
 
