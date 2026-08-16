@@ -861,70 +861,79 @@
     const results = [];
     let searchIdx = 0; // タイムスタンプは昇順なので前方にしか進めない
 
-    for (let i = 0; i < timestamps.length; i++) {
-      const targetTs = Math.round(timestamps[i] * timescale);
+    // デコーダーは1個だけ作って使い回す（対象タイムスタンプごとに作り直すと、
+    // 特にモバイル端末でハードウェアデコーダーの初期化コストが積み重なり非常に遅くなる）。
+    // キーフレームから始まるチャンクを渡せば内部状態は正しくリセットされるため、
+    // 使わない区間（GOP）は読み込み・デコードとも丸ごとスキップできる。
+    let frames = [];
+    const decoder = new VideoDecoder({
+      output: (frame) => frames.push(frame),
+      error: () => { /* framesが空のまま進むので下でエラーにする */ }
+    });
+    decoder.configure(config);
 
-      while (searchIdx < samples.length - 1 && samples[searchIdx + 1].cts <= targetTs) searchIdx++;
-      let syncIdx = searchIdx;
-      while (syncIdx > 0 && !samples[syncIdx].is_sync) syncIdx--;
+    try {
+      for (let i = 0; i < timestamps.length; i++) {
+        const targetTs = Math.round(timestamps[i] * timescale);
 
-      let endIdx = syncIdx;
-      while (
-        endIdx < samples.length - 1 &&
-        samples[endIdx].cts < targetTs &&
-        (endIdx - syncIdx) < FAST_PATH_MAX_WINDOW_SAMPLES
-      ) {
-        endIdx++;
+        while (searchIdx < samples.length - 1 && samples[searchIdx + 1].cts <= targetTs) searchIdx++;
+        let syncIdx = searchIdx;
+        while (syncIdx > 0 && !samples[syncIdx].is_sync) syncIdx--;
+
+        let endIdx = syncIdx;
+        while (
+          endIdx < samples.length - 1 &&
+          samples[endIdx].cts < targetTs &&
+          (endIdx - syncIdx) < FAST_PATH_MAX_WINDOW_SAMPLES
+        ) {
+          endIdx++;
+        }
+
+        const rangeStart = samples[syncIdx].offset;
+        const rangeEnd = samples[endIdx].offset + samples[endIdx].size;
+        const rangeBuf = await file.slice(rangeStart, rangeEnd).arrayBuffer();
+        const rangeView = new Uint8Array(rangeBuf);
+
+        frames = [];
+        for (let s = syncIdx; s <= endIdx; s++) {
+          const sample = samples[s];
+          const localStart = sample.offset - rangeStart;
+          const chunkData = rangeView.slice(localStart, localStart + sample.size);
+          decoder.decode(new EncodedVideoChunk({
+            type: sample.is_sync ? "key" : "delta",
+            timestamp: Math.round((sample.cts * 1e6) / timescale),
+            data: chunkData
+          }));
+        }
+        await decoder.flush();
+
+        if (!frames.length) {
+          throw new Error("フレームのデコードに失敗しました");
+        }
+
+        const targetUs = Math.round(timestamps[i] * 1e6);
+        let best = frames[0];
+        let bestDiff = Infinity;
+        for (const f of frames) {
+          const diff = Math.abs(f.timestamp - targetUs);
+          if (diff < bestDiff) { bestDiff = diff; best = f; }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = best.displayWidth;
+        canvas.height = best.displayHeight;
+        canvas.getContext("2d").drawImage(best, 0, 0);
+        frames.forEach((f) => f.close());
+        frames = [];
+
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, mimeType, 0.9));
+        if (!blob) throw new Error("画像への変換に失敗しました");
+
+        results.push({ timestamp: timestamps[i], blob });
+        onProgress(i + 1, timestamps.length);
       }
-
-      const rangeStart = samples[syncIdx].offset;
-      const rangeEnd = samples[endIdx].offset + samples[endIdx].size;
-      const rangeBuf = await file.slice(rangeStart, rangeEnd).arrayBuffer();
-      const rangeView = new Uint8Array(rangeBuf);
-
-      const frames = [];
-      const decoder = new VideoDecoder({
-        output: (frame) => frames.push(frame),
-        error: () => { /* framesが空のまま進むので下でエラーにする */ }
-      });
-      decoder.configure(config);
-
-      for (let s = syncIdx; s <= endIdx; s++) {
-        const sample = samples[s];
-        const localStart = sample.offset - rangeStart;
-        const chunkData = rangeView.slice(localStart, localStart + sample.size);
-        decoder.decode(new EncodedVideoChunk({
-          type: sample.is_sync ? "key" : "delta",
-          timestamp: Math.round((sample.cts * 1e6) / timescale),
-          data: chunkData
-        }));
-      }
-      await decoder.flush();
+    } finally {
       decoder.close();
-
-      if (!frames.length) {
-        throw new Error("フレームのデコードに失敗しました");
-      }
-
-      const targetUs = Math.round(timestamps[i] * 1e6);
-      let best = frames[0];
-      let bestDiff = Infinity;
-      for (const f of frames) {
-        const diff = Math.abs(f.timestamp - targetUs);
-        if (diff < bestDiff) { bestDiff = diff; best = f; }
-      }
-
-      const canvas = document.createElement("canvas");
-      canvas.width = best.displayWidth;
-      canvas.height = best.displayHeight;
-      canvas.getContext("2d").drawImage(best, 0, 0);
-      frames.forEach((f) => f.close());
-
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, mimeType, 0.9));
-      if (!blob) throw new Error("画像への変換に失敗しました");
-
-      results.push({ timestamp: timestamps[i], blob });
-      onProgress(i + 1, timestamps.length);
     }
 
     return results;
