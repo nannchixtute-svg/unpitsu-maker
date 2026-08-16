@@ -861,12 +861,13 @@
     return videoTrackInfo.duration / videoTrackInfo.timescale;
   }
 
-  async function tryFastExtract(file, timestamps, mimeType, onProgress) {
+  async function tryFastExtract(file, timestamps, mimeType, onProgress, cancelToken) {
     if (typeof VideoDecoder === "undefined" || typeof EncodedVideoChunk === "undefined") {
       throw new Error("この端末・ブラウザは低メモリ抽出に対応していません");
     }
 
     const { videoTrackInfo, trak, samples } = await demuxMp4(file);
+    if (cancelToken && cancelToken.cancelled) throw new Error("処理を中断しました");
 
     const description = getCodecDescription(trak);
     const config = {
@@ -898,6 +899,9 @@
 
     try {
       for (let i = 0; i < timestamps.length; i++) {
+        if (cancelToken && cancelToken.cancelled) {
+          throw new Error("処理を中断しました");
+        }
         const targetTs = Math.round(timestamps[i] * timescale);
 
         while (searchIdx < samples.length - 1 && samples[searchIdx + 1].cts <= targetTs) searchIdx++;
@@ -1020,6 +1024,33 @@
       });
     }
 
+    // 低メモリ抽出が万一ハングした場合でも無限に固まらないよう、上限時間を決めて
+    // 打ち切る。cancelTokenでtryFastExtract側のループにも中断を伝え、あきらめた後
+    // まで裏でデコード処理が動き続けてリソースを食い合わないようにする。
+    async function tryFastExtractWithTimeout(timestampsForFast) {
+      const cancelToken = { cancelled: false };
+      const timeoutMs = Math.max(30000, timestampsForFast.length * 8000);
+      let timer;
+      const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          cancelToken.cancelled = true;
+          reject(new Error("低メモリ抽出の処理に時間がかかりすぎたため中断しました"));
+        }, timeoutMs);
+      });
+      try {
+        return await Promise.race([
+          tryFastExtract(
+            videoFile, timestampsForFast, mimeType,
+            (done, total) => updateProgress(done, total, "取得中…（低メモリモード）"),
+            cancelToken
+          ),
+          timeoutPromise
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
     async function captureWithVideoElement() {
       // 一部のモバイルブラウザ（iOS Safariなど）は、動画を一度も再生していないと
       // canvasへのフレーム描画が真っ黒になることがあるため、キャプチャ開始前に
@@ -1062,23 +1093,18 @@
       if (previewLoadFailed) {
         // <video>要素でのプレビュー読み込みに失敗した動画（大きすぎる等）は、
         // 低メモリ抽出（MP4Box + WebCodecs）でしか処理できない。
-        const results = await tryFastExtract(
-          videoFile, timestamps, mimeType,
-          (done, total) => updateProgress(done, total, "取得中…（低メモリモード）")
-        );
+        const results = await tryFastExtractWithTimeout(timestamps);
         commitFastResults(results);
       } else {
         let usedFastPath = false;
         if (videoFile.size > FAST_PATH_MIN_BYTES) {
           try {
-            const results = await tryFastExtract(
-              videoFile, timestamps, mimeType,
-              (done, total) => updateProgress(done, total, "取得中…（低メモリモード）")
-            );
+            const results = await tryFastExtractWithTimeout(timestamps);
             commitFastResults(results);
             usedFastPath = true;
           } catch (fastErr) {
-            // 低メモリ抽出に失敗した場合は、通常の<video>方式で最初からやり直す
+            // 低メモリ抽出に失敗（タイムアウト含む）した場合は、
+            // 通常の<video>方式で最初からやり直す
             clearShots();
           }
         }
