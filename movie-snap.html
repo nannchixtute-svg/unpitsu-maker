@@ -800,6 +800,7 @@
   // ---------------------------------------------------------------
   const FAST_PATH_MIN_BYTES = 50 * 1024 * 1024; // 50MB未満は従来方式で十分なので試さない
   const FAST_PATH_MAX_WINDOW_SAMPLES = 600; // 1フレーム分のデコードで読むサンプル数の上限（安全策）
+  const FAST_PATH_FLUSH_TIMEOUT_MS = 10000; // 1枚のデコードにかける時間の上限（これを超えたら即あきらめる）
 
   function getCodecDescription(trak) {
     const entry = trak.mdia.minf.stbl.stsd.entries[0];
@@ -933,7 +934,15 @@
             data: chunkData
           }));
         }
-        await decoder.flush();
+        // 1枚ごとに短いタイムアウトを設ける。デコードが本当にハングした場合、
+        // 全体の所要時間（枚数×数秒）ぶん待たされてから気づくのでは遅すぎるため、
+        // 1枚だけで判断してすぐに諦める（呼び出し側が<video>方式にフォールバックする）。
+        await Promise.race([
+          decoder.flush(),
+          new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("フレームのデコードがタイムアウトしました")), FAST_PATH_FLUSH_TIMEOUT_MS);
+          })
+        ]);
 
         if (!frames.length) {
           throw new Error("フレームのデコードに失敗しました");
@@ -1024,12 +1033,14 @@
       });
     }
 
-    // 低メモリ抽出が万一ハングした場合でも無限に固まらないよう、上限時間を決めて
-    // 打ち切る。cancelTokenでtryFastExtract側のループにも中断を伝え、あきらめた後
-    // まで裏でデコード処理が動き続けてリソースを食い合わないようにする。
+    // 低メモリ抽出が万一ハングした場合でも無限に固まらないよう、全体にも上限時間を
+    // 設ける（1枚ごとのタイムアウトは別途tryFastExtract内にもあり、そちらが主に
+    // 効くはずだが、デコード以外の場所でハングした場合の保険としてこちらも用意する）。
+    // cancelTokenでtryFastExtract側のループにも中断を伝え、あきらめた後まで裏で
+    // デコード処理が動き続けてリソースを食い合わないようにする。
     async function tryFastExtractWithTimeout(timestampsForFast) {
       const cancelToken = { cancelled: false };
-      const timeoutMs = Math.max(30000, timestampsForFast.length * 8000);
+      const timeoutMs = Math.max(30000, timestampsForFast.length * 2000);
       let timer;
       const timeoutPromise = new Promise((_, reject) => {
         timer = setTimeout(() => {
