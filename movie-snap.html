@@ -422,6 +422,14 @@
       <option value="png">PNG（画質重視）</option>
     </select>
 
+    <div class="field-label">解像度</div>
+    <select class="format-select" id="resolutionSelect">
+      <option value="0" selected>元のまま</option>
+      <option value="1280">軽量化する（長辺1280px程度・文字は読めます）</option>
+      <option value="800">もっと軽量化する（長辺800px程度）</option>
+    </select>
+    <p class="section-hint" style="margin-top:6px;">枚数が多い・大きい動画では、軽量化すると保存や書き出しが速くなります。</p>
+
     <p class="estimate-note" id="estimateNote" style="display:none;"></p>
   </section>
 
@@ -480,6 +488,7 @@
   const intervalPresets = document.getElementById("intervalPresets");
   const customInterval = document.getElementById("customInterval");
   const formatSelect = document.getElementById("formatSelect");
+  const resolutionSelect = document.getElementById("resolutionSelect");
   const estimateNote = document.getElementById("estimateNote");
 
   const btnCapture = document.getElementById("btnCapture");
@@ -666,6 +675,21 @@
   // ---------------------------------------------------------------
   // 3. フレーム取得
   // ---------------------------------------------------------------
+
+  // resolutionSelectで指定された長辺サイズに収まるよう、必要な場合だけ縮小したサイズを返す。
+  // 0（元のまま）の場合や、すでに指定サイズ以下の場合は縮小しない。
+  function getScaledSize(width, height) {
+    const maxLongSide = parseInt(resolutionSelect.value, 10);
+    if (!maxLongSide) return { width, height };
+    const longSide = Math.max(width, height);
+    if (longSide <= maxLongSide) return { width, height };
+    const scale = maxLongSide / longSide;
+    return {
+      width: Math.max(1, Math.round(width * scale)),
+      height: Math.max(1, Math.round(height * scale))
+    };
+  }
+
   function seekTo(video, time) {
     return new Promise((resolve) => {
       const SEEK_TIMEOUT_MS = 4000;
@@ -919,10 +943,11 @@
           if (diff < bestDiff) { bestDiff = diff; best = f; }
         }
 
+        const size = getScaledSize(best.displayWidth, best.displayHeight);
         const canvas = document.createElement("canvas");
-        canvas.width = best.displayWidth;
-        canvas.height = best.displayHeight;
-        canvas.getContext("2d").drawImage(best, 0, 0);
+        canvas.width = size.width;
+        canvas.height = size.height;
+        canvas.getContext("2d").drawImage(best, 0, 0, size.width, size.height);
         frames.forEach((f) => f.close());
         frames = [];
 
@@ -1012,8 +1037,9 @@
         const t = timestamps[i];
         await seekTo(videoPreview, t);
 
-        canvas.width = videoPreview.videoWidth;
-        canvas.height = videoPreview.videoHeight;
+        const size = getScaledSize(videoPreview.videoWidth, videoPreview.videoHeight);
+        canvas.width = size.width;
+        canvas.height = size.height;
         ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
 
         const blob = await new Promise((resolve) => canvas.toBlob(resolve, mimeType, 0.9));
