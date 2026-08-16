@@ -816,7 +816,10 @@
     if (!box) return null;
     const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
     box.write(stream);
-    return new Uint8Array(stream.buffer, 8); // ボックスヘッダー（size+type）を除く
+    // ボックスヘッダー（size+type、8バイト）を除いた部分だけを取り出す。
+    // box.sizeで明示的に範囲を区切り、streamの内部バッファに余分な未使用領域が
+    // あった場合でも余計なバイトを含めないようにする。
+    return new Uint8Array(stream.buffer, 8, Math.max(0, box.size - 8));
   }
 
   // ファイルの先頭（faststart）または末尾（moovが後ろにある一般的なmp4/mov）だけを
@@ -882,7 +885,11 @@
     const config = {
       codec: videoTrackInfo.codec,
       codedWidth: videoTrackInfo.video.width,
-      codedHeight: videoTrackInfo.video.height
+      codedHeight: videoTrackInfo.video.height,
+      // ハードウェアデコードされたVideoFrameを2D canvasにそのまま描画すると、
+      // 一部のブラウザ（特にSafari系）でGPU側のテクスチャがうまく読み出せず
+      // 真っ黒になることがあるため、ソフトウェアデコードを優先させる。
+      hardwareAcceleration: "prefer-software"
     };
     if (description) config.description = description;
 
@@ -968,7 +975,16 @@
         const canvas = document.createElement("canvas");
         canvas.width = size.width;
         canvas.height = size.height;
-        canvas.getContext("2d").drawImage(best, 0, 0, size.width, size.height);
+        // VideoFrameを2D canvasに直接drawImageすると、一部のブラウザで真っ黒に
+        // なることがあるため、createImageBitmap()を経由してから描画する
+        // （それも使えない場合はdrawImageに直接フォールバックする）。
+        if (typeof createImageBitmap === "function") {
+          const bitmap = await createImageBitmap(best);
+          canvas.getContext("2d").drawImage(bitmap, 0, 0, size.width, size.height);
+          bitmap.close();
+        } else {
+          canvas.getContext("2d").drawImage(best, 0, 0, size.width, size.height);
+        }
         frames.forEach((f) => f.close());
         frames = [];
 
