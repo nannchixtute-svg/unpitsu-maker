@@ -549,6 +549,7 @@
   // 1. 動画選択
   // ---------------------------------------------------------------
   const LARGE_FILE_WARNING_BYTES = 300 * 1024 * 1024; // 300MB
+  const VIDEO_PREVIEW_TIMEOUT_MS = 10000; // <video>の読み込みが無言で止まった場合に切り替えるまでの時間
 
   function formatFileSize(bytes) {
     return (bytes / (1024 * 1024)).toFixed(0) + "MB";
@@ -579,19 +580,11 @@
 
     let metadataResolved = false;
 
-    videoPreview.onloadedmetadata = () => {
-      metadataResolved = true;
-      videoDuration = videoPreview.duration;
-      videoMeta.innerHTML =
-        `<strong>${file.name}</strong>　動画の長さ：${formatTimestamp(videoDuration)}`;
-      btnCapture.disabled = false;
-      updateEstimate();
-    };
-    videoPreview.onerror = async () => {
+    // <video>要素でのプレビュー読み込みに失敗・停滞した場合（大きい動画でメモリ
+    // 不足になった場合など）、動画の構造情報だけを読んで長さを取得できないか試す。
+    // これが成功すれば、プレビューは表示できなくても抽出自体は続行できる。
+    async function fallbackToMp4BoxDuration() {
       if (metadataResolved) return;
-      // <video>要素でのプレビュー読み込みに失敗した場合（大きい動画でメモリ不足に
-      // なった場合など）、動画の構造情報だけを読んで長さを取得できないか試す。
-      // これが成功すれば、プレビューは表示できなくても抽出自体は続行できる。
       try {
         videoDuration = await getDurationViaMp4Box(file);
         metadataResolved = true;
@@ -603,12 +596,27 @@
         btnCapture.disabled = false;
         updateEstimate();
       } catch (mp4boxErr) {
+        if (metadataResolved) return; // タイムアウトとonerrorが競合した場合の保険
         const sizeHint = file.size > LARGE_FILE_WARNING_BYTES
           ? `ファイルサイズが大きい（約${formatFileSize(file.size)}）ことが原因の可能性が高いです。動画を短く切り取るか、書き出し画質を下げてから試してください。`
           : "対応していない動画形式の可能性があります。別の動画でお試しください。";
         showCaptureStatus(`動画の読み込みに失敗しました。${sizeHint}`, "error");
       }
+    }
+
+    videoPreview.onloadedmetadata = () => {
+      metadataResolved = true;
+      videoDuration = videoPreview.duration;
+      videoMeta.innerHTML =
+        `<strong>${file.name}</strong>　動画の長さ：${formatTimestamp(videoDuration)}`;
+      btnCapture.disabled = false;
+      updateEstimate();
     };
+    videoPreview.onerror = fallbackToMp4BoxDuration;
+
+    // <video>要素の読み込みが「失敗」も「成功」もせず、無言のまま止まってしまう
+    // ケース（巨大な動画で起こりうる）に備え、一定時間で強制的に切り替える。
+    setTimeout(fallbackToMp4BoxDuration, VIDEO_PREVIEW_TIMEOUT_MS);
   }
 
   dropZone.addEventListener("click", () => fileInput.click());
