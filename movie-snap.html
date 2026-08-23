@@ -361,6 +361,20 @@
   .status-msg.error{ color: var(--color-danger); font-weight:700; }
   .status-msg.info{ color: var(--color-mint-text); font-weight:700; }
 
+  /* 文字起こし結果 */
+  .transcript-textarea{
+    width:100%;
+    min-height:160px;
+    font-size:1rem;
+    line-height:1.8;
+    padding:12px 14px;
+    border:2px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    resize:vertical;
+    margin-top:12px;
+  }
+
   .footer-note{
     font-size:0.75rem;
     color: var(--color-text-soft);
@@ -466,7 +480,45 @@
     <p class="status-msg" id="downloadStatus"></p>
   </section>
 
-  <p class="footer-note">動画の読み込みとスクリーンショットの作成は、すべてこの端末（ブラウザ）内で処理されます。動画がサーバーに送信されることはありません。</p>
+  <!-- ============================ 5. 文字起こし ============================ -->
+  <section class="panel-section">
+    <h2><span class="badge">5</span>話し声を文字に起こす</h2>
+    <p class="section-hint">上でえらんだ動画の話し声を認識して文字にします。音声認識モデル（数十MB）を初回のみダウンロードするため、Wi-Fi環境と数分以内の短い動画での利用をおすすめします。処理は端末内で行われますが、時間がかかる場合があります。</p>
+
+    <div class="field-label" id="transcribeLangLabel">話している言語</div>
+    <select class="format-select" id="transcribeLangSelect" aria-labelledby="transcribeLangLabel">
+      <option value="">自動検出</option>
+      <option value="japanese" selected>日本語</option>
+      <option value="english">英語</option>
+    </select>
+
+    <button type="button" class="btn btn-primary btn-block" id="btnTranscribe" style="margin-top:14px;" disabled>🎙️ 話し声を文字に起こす</button>
+
+    <div class="progress-wrap" id="transcribeProgressWrap">
+      <div class="progress-label">
+        <span id="transcribeProgressLabel">準備中…</span>
+        <span id="transcribeProgressPercent"></span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="transcribeProgressFill"></div></div>
+    </div>
+
+    <p class="status-msg" id="transcribeStatus"></p>
+
+    <textarea id="transcriptText" class="transcript-textarea" placeholder="ここに文字起こし結果が表示されます。編集もできます。"></textarea>
+    <p class="section-hint" style="margin-top:6px;">誤認識があれば、ここで直してから保存・コピーできます。</p>
+
+    <div class="action-row">
+      <button type="button" class="btn btn-outline" id="btnCopyTranscript" disabled>📋 コピー</button>
+      <button type="button" class="btn btn-outline" id="btnDownloadTranscript" disabled>💾 テキストを保存</button>
+    </div>
+    <div class="action-row">
+      <button type="button" class="btn btn-outline btn-block" id="btnOpenReader" disabled>📖 しゃしん読み上げツールで開いて読み上げる</button>
+    </div>
+
+    <p class="status-msg" id="transcriptActionStatus"></p>
+  </section>
+
+  <p class="footer-note">動画の読み込み・スクリーンショットの作成・文字起こしは、すべてこの端末（ブラウザ）内で処理されます。動画がサーバーに送信されることはありません。</p>
 </div>
 
 <!-- JSZip（ZIP作成）／jsPDF（PDF作成）：いずれもクライアント側で動作するライブラリ -->
@@ -492,6 +544,7 @@
   const estimateNote = document.getElementById("estimateNote");
 
   const btnCapture = document.getElementById("btnCapture");
+  const btnTranscribe = document.getElementById("btnTranscribe");
   const progressWrap = document.getElementById("progressWrap");
   const progressLabel = document.getElementById("progressLabel");
   const progressPercent = document.getElementById("progressPercent");
@@ -564,6 +617,7 @@
     videoFile = file;
     previewLoadFailed = false;
     btnCapture.disabled = true;
+    btnTranscribe.disabled = true;
 
     if (file.size > LARGE_FILE_WARNING_BYTES) {
       showCaptureStatus(
@@ -594,6 +648,7 @@
           `<strong>${file.name}</strong>　動画の長さ：${formatTimestamp(videoDuration)}` +
           `（プレビュー表示はできませんでしたが、抽出は続行できます）`;
         btnCapture.disabled = false;
+        btnTranscribe.disabled = false;
         updateEstimate();
       } catch (mp4boxErr) {
         if (metadataResolved) return; // タイムアウトとonerrorが競合した場合の保険
@@ -610,6 +665,7 @@
       videoMeta.innerHTML =
         `<strong>${file.name}</strong>　動画の長さ：${formatTimestamp(videoDuration)}`;
       btnCapture.disabled = false;
+      btnTranscribe.disabled = false;
       updateEstimate();
     };
     videoPreview.onerror = fallbackToMp4BoxDuration;
@@ -1273,6 +1329,223 @@
   });
 
   renderShotGrid();
+
+  // 文字起こしモジュール（別scriptタグ）から、現在選択中の動画ファイルを
+  // 参照できるようにする（動画の再アップロードを不要にするため）。
+  window.__movieSnapGetVideoFile = () => videoFile;
+  window.__movieSnapIsLargeFile = () => Boolean(videoFile && videoFile.size > LARGE_FILE_WARNING_BYTES);
+  window.__movieSnapFormatFileSize = formatFileSize;
+})();
+</script>
+
+<!-- ============================================================ -->
+<!-- 文字起こし（Whisperをtransformers.js経由でブラウザ内実行）           -->
+<!-- 音声認識モデルが大きいため、上のスクショ機能とは独立させ、             -->
+<!-- ESモジュールとして遅延ロードする。                                    -->
+<!-- ============================================================ -->
+<script type="module">
+(function () {
+  "use strict";
+
+  const transcribeLangSelect = document.getElementById("transcribeLangSelect");
+  const btnTranscribe = document.getElementById("btnTranscribe");
+  const transcribeProgressWrap = document.getElementById("transcribeProgressWrap");
+  const transcribeProgressLabel = document.getElementById("transcribeProgressLabel");
+  const transcribeProgressPercent = document.getElementById("transcribeProgressPercent");
+  const transcribeProgressFill = document.getElementById("transcribeProgressFill");
+  const transcribeStatus = document.getElementById("transcribeStatus");
+
+  const transcriptText = document.getElementById("transcriptText");
+  const btnCopyTranscript = document.getElementById("btnCopyTranscript");
+  const btnDownloadTranscript = document.getElementById("btnDownloadTranscript");
+  const btnOpenReader = document.getElementById("btnOpenReader");
+  const transcriptActionStatus = document.getElementById("transcriptActionStatus");
+
+  let transcriberPromise = null;
+
+  function showTranscribeStatus(text, kind) {
+    transcribeStatus.textContent = text;
+    transcribeStatus.className = "status-msg" + (kind ? " " + kind : "");
+  }
+
+  function showTranscriptActionStatus(text, kind) {
+    transcriptActionStatus.textContent = text;
+    transcriptActionStatus.className = "status-msg" + (kind ? " " + kind : "");
+  }
+
+  function updateTranscriptActionButtons() {
+    const hasText = transcriptText.value.trim().length > 0;
+    btnCopyTranscript.disabled = !hasText;
+    btnDownloadTranscript.disabled = !hasText;
+    btnOpenReader.disabled = !hasText;
+  }
+  transcriptText.addEventListener("input", updateTranscriptActionButtons);
+
+  // 動画・音声ファイルから音声トラックを取り出し、Whisperが要求する
+  // 16kHzモノラルのFloat32Array（PCM）に変換する。
+  async function decodeToMono16k(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    const tempCtx = new AudioContextClass();
+    let decoded;
+    try {
+      decoded = await tempCtx.decodeAudioData(arrayBuffer);
+    } finally {
+      tempCtx.close();
+    }
+
+    const targetRate = 16000;
+    const offlineCtx = new OfflineAudioContext(1, Math.ceil(decoded.duration * targetRate), targetRate);
+    const source = offlineCtx.createBufferSource();
+    source.buffer = decoded;
+    source.connect(offlineCtx.destination);
+    source.start(0);
+    const rendered = await offlineCtx.startRendering();
+    return { samples: rendered.getChannelData(0), duration: decoded.duration };
+  }
+
+  async function getTranscriber() {
+    if (!transcriberPromise) {
+      transcriberPromise = (async () => {
+        const { pipeline } = await import("https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2");
+        return pipeline("automatic-speech-recognition", "Xenova/whisper-base", {
+          progress_callback: (p) => {
+            if (p.status === "progress" && typeof p.progress === "number") {
+              transcribeProgressLabel.textContent = "音声認識モデルを読み込み中…（初回のみ）";
+              const pct = Math.round(p.progress);
+              transcribeProgressPercent.textContent = pct + "%";
+              transcribeProgressFill.style.width = pct + "%";
+            }
+          }
+        });
+      })();
+    }
+    return transcriberPromise;
+  }
+
+  btnTranscribe.addEventListener("click", async () => {
+    const file = window.__movieSnapGetVideoFile ? window.__movieSnapGetVideoFile() : null;
+    if (!file) {
+      showTranscribeStatus("先に動画をえらんでください。", "error");
+      return;
+    }
+
+    btnTranscribe.disabled = true;
+    transcribeProgressWrap.classList.add("visible");
+    transcribeProgressLabel.textContent = "準備中…";
+    transcribeProgressPercent.textContent = "";
+    transcribeProgressFill.style.width = "0%";
+    showTranscribeStatus("", "");
+
+    if (window.__movieSnapIsLargeFile && window.__movieSnapIsLargeFile()) {
+      const sizeText = window.__movieSnapFormatFileSize ? window.__movieSnapFormatFileSize(file.size) : "";
+      showTranscribeStatus(
+        `動画ファイルが大きいです（約${sizeText}）。文字起こし処理でメモリ不足になる場合があります。うまくいかない場合は動画を短く切り取ってからお試しください。`,
+        "info"
+      );
+    }
+
+    try {
+      transcribeProgressLabel.textContent = "音声を取り出しています…";
+      const { samples, duration } = await decodeToMono16k(file);
+      if (duration > 600) {
+        showTranscribeStatus("動画が長いため、文字起こしに数分〜数十分かかることがあります。", "info");
+      }
+
+      transcribeProgressLabel.textContent = "音声認識モデルを準備しています…（初回は時間がかかります）";
+      const transcriber = await getTranscriber();
+
+      transcribeProgressLabel.textContent = "話し声を文字に起こしています…";
+      transcribeProgressPercent.textContent = "";
+      transcribeProgressFill.style.width = "100%";
+
+      const langValue = transcribeLangSelect.value;
+      const result = await transcriber(samples, {
+        language: langValue || undefined,
+        task: "transcribe",
+        chunk_length_s: 30,
+        stride_length_s: 5
+      });
+
+      const text = (result && result.text ? result.text : "").trim();
+      if (!text) {
+        showTranscribeStatus("話し声を検出できませんでした。別のファイルでお試しください。", "error");
+      } else {
+        transcriptText.value = text;
+        updateTranscriptActionButtons();
+        showTranscribeStatus("文字起こしが完了しました。内容を確認してください。", "info");
+      }
+    } catch (err) {
+      showTranscribeStatus(
+        "文字起こし中にエラーが発生しました：" + (err && err.message ? err.message : err),
+        "error"
+      );
+    } finally {
+      btnTranscribe.disabled = false;
+      transcribeProgressWrap.classList.remove("visible");
+    }
+  });
+
+  // ---------------------------------------------------------------
+  // コピー／ダウンロード／読み上げツールへの引き渡し
+  // ---------------------------------------------------------------
+  btnCopyTranscript.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(transcriptText.value);
+      showTranscriptActionStatus("コピーしました。", "info");
+    } catch (err) {
+      showTranscriptActionStatus("コピーに失敗しました。テキストを選択して手動でコピーしてください。", "error");
+    }
+  });
+
+  btnDownloadTranscript.addEventListener("click", () => {
+    const blob = new Blob([transcriptText.value], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "movie-transcript.txt";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showTranscriptActionStatus("テキストをダウンロードしました。", "info");
+  });
+
+  // しゃしん読み上げツール（photo-reader.html）と同じlocalStorageキーに
+  // 「保存した文章一覧」として書き込み、そちらのページで読み込んで読み上げられるようにする。
+  const READER_SAVED_LIST_KEY = "photoReaderSavedList";
+  const READER_MAX_SAVED_ITEMS = 10;
+
+  function generateSavedItemId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function pushToReaderSavedList(text) {
+    try {
+      const raw = localStorage.getItem(READER_SAVED_LIST_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      const list = Array.isArray(parsed) ? parsed : [];
+      list.push({ id: generateSavedItemId(), text, savedAt: Date.now() });
+      while (list.length > READER_MAX_SAVED_ITEMS) list.shift();
+      localStorage.setItem(READER_SAVED_LIST_KEY, JSON.stringify(list));
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  btnOpenReader.addEventListener("click", () => {
+    const text = transcriptText.value.trim();
+    if (!text) return;
+    if (pushToReaderSavedList(text)) {
+      window.location.href = "photo-reader.html";
+    } else {
+      showTranscriptActionStatus("保存に失敗しました。テキストをコピーしてお使いください。", "error");
+    }
+  });
 })();
 </script>
 
